@@ -1,0 +1,1016 @@
+{
+  "phase": "fase2_subagentes",
+  "timestamp": "2026-06-10T12:24:52.592965",
+  "model": "qwen3:30b-a3b",
+  "gate_pct": 80.0,
+  "summary": {
+    "financas": {
+      "passed": 9,
+      "total": 10,
+      "pct": 90.0,
+      "gate": true
+    },
+    "rh": {
+      "passed": 10,
+      "total": 10,
+      "pct": 100.0,
+      "gate": true
+    },
+    "estoque": {
+      "passed": 9,
+      "total": 10,
+      "pct": 90.0,
+      "gate": true
+    },
+    "vendas": {
+      "passed": 10,
+      "total": 10,
+      "pct": 100.0,
+      "gate": true
+    }
+  },
+  "tasks": [
+    {
+      "id": "financas-01",
+      "domain": "financas",
+      "task": "Qual é o valor da conta a pagar do aluguel do escritório de junho?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O valor da conta a pagar do aluguel do escritório de junho é R$ 8.500,00.",
+      "tool_trace": [
+        {
+          "name": "list_accounts",
+          "args": {
+            "type": "pagar"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 57.51,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-02",
+      "domain": "financas",
+      "task": "Detalhe a conta de id 3: qual é o valor e quem é a contraparte?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O valor é R$62.000,00 e a contraparte é Vetta Consultoria.",
+      "tool_trace": [
+        {
+          "name": "get_account",
+          "args": {
+            "account_id": 3
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 52.64,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-03",
+      "domain": "financas",
+      "task": "Qual é a contraparte da conta a receber em aberto de maior valor?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Lojas Andrade S.A.",
+      "tool_trace": [
+        {
+          "name": "list_accounts",
+          "args": {
+            "status": "aberta",
+            "type": "receber"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 63.27,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-04",
+      "domain": "financas",
+      "task": "Quais são as entradas previstas no fluxo de caixa entre hoje e daqui a 30 dias?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "As entradas previstas no fluxo de caixa entre hoje e daqui a 30 dias são R$ 104.150,00.",
+      "tool_trace": [
+        {
+          "name": "get_cashflow",
+          "args": {
+            "start": "2026-06-10",
+            "end": "2026-07-10"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 81.84,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-05",
+      "domain": "financas",
+      "task": "Crie uma conta a pagar de R$ 1.200,00 para o fornecedor Papelaria Central, descrição 'Suprimentos de impressão', com vencimento em 2026-07-10.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Conta a pagar criada com sucesso. ID: 14, valor: R$ 1.200,00, vencimento: 2026-07-10, fornecedor: Papelaria Central.",
+      "tool_trace": [
+        {
+          "name": "create_account",
+          "args": {
+            "type": "pagar",
+            "counterparty": "Papelaria Central",
+            "amount": 1200,
+            "due_date": "2026-07-10",
+            "description": "Suprimentos de impressão"
+          },
+          "status": 201
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 71.03,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-06",
+      "domain": "financas",
+      "task": "Crie uma conta a pagar de R$ 30.000,00 para a Vetta Consultoria, descrição 'Consultoria adicional', vencimento 2026-07-15, sem informar aprovador. Se não for permitido, explique a regra.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A criação da conta a pagar requer aprovação com alçada de 'gerente' para valores entre R$5.001,00 e R$50.000,00. O valor informado (R$30.000,00) exige que seja especificado `approver_role=\"gerente\"`. Por favor, inclua este campo na solicitação.",
+      "tool_trace": [
+        {
+          "name": "create_account",
+          "args": {
+            "type": "pagar",
+            "counterparty": "Vetta Consultoria",
+            "description": "Consultoria adicional",
+            "amount": 30000,
+            "due_date": "2026-07-15"
+          },
+          "status": 422
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 68.5,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-07",
+      "domain": "financas",
+      "task": "Detalhe a conta de id 999.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A conta com ID 999 não existe. Liste as contas em GET /accounts para ver os IDs válidos.",
+      "tool_trace": [
+        {
+          "name": "get_account",
+          "args": {
+            "account_id": 999
+          },
+          "status": 404
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 45.86,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-08",
+      "domain": "financas",
+      "task": "Crie uma conta a pagar de R$ 200,00 para o fornecedor Copa & Cozinha, descrição 'Café e copa', vencimento 2026-06-20, e em seguida pague essa conta.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Conta a pagar criada com sucesso (ID 15) e paga hoje (2026-06-10).",
+      "tool_trace": [
+        {
+          "name": "create_account",
+          "args": {
+            "due_date": "2026-06-20",
+            "description": "Café e copa",
+            "type": "pagar",
+            "counterparty": "Copa & Cozinha",
+            "amount": 200
+          },
+          "status": 201
+        },
+        {
+          "name": "pay_account",
+          "args": {
+            "account_id": 15
+          },
+          "status": 200
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 215.98,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-09",
+      "domain": "financas",
+      "task": "Liquide (receba) a conta de id 9 e me diga o resultado.",
+      "passed": false,
+      "failures": [
+        "tool ausente na trace: receive_account (trace: ['get_account'])",
+        "status 422 ausente na trace (statuses: [200])"
+      ],
+      "error": null,
+      "final_answer": "A conta de ID 9 já está marcada como \"recebida\" (status: recebida), conforme detalhado no retorno da consulta. Não é possível liquidar novamente uma conta já recebida.",
+      "tool_trace": [
+        {
+          "name": "get_account",
+          "args": {
+            "account_id": 9
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 26.75,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "financas-10",
+      "domain": "financas",
+      "task": "Liste as contas com status 'paga' e informe a contraparte de cada uma.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Enel Distribuição SP, Copa & Cozinha, Copa & Cozinha",
+      "tool_trace": [
+        {
+          "name": "list_accounts",
+          "args": {
+            "status": "paga"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 72.8,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-01",
+      "domain": "rh",
+      "task": "Qual é o salário da funcionária Fernanda Yoshida?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O salário da funcionária Fernanda Yoshida é R$ 22.000,00.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 53.79,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-02",
+      "domain": "rh",
+      "task": "Quantos funcionários há no departamento de Engenharia?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "4 funcionários no departamento de Engenharia.",
+      "tool_trace": [
+        {
+          "name": "get_headcount",
+          "args": {
+            "department": "Engenharia"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 26.29,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-03",
+      "domain": "rh",
+      "task": "Qual é o saldo de férias de Mariana Albuquerque no ano aquisitivo 2026?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O saldo de férias de Mariana Albuquerque no ano aquisitivo 2026 é de 20 dias.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "get_vacation_balance",
+          "args": {
+            "employee_id": 1,
+            "acquisition_year": 2026
+          },
+          "status": 200
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 70.12,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-04",
+      "domain": "rh",
+      "task": "Solicite 14 dias de férias para Fernanda Yoshida a partir de 2026-08-03, no ano aquisitivo 2026.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Solicitação de férias para Fernanda Yoshida (ID 3) aprovada: 14 dias, início em 2026-08-03, ano aquisitivo 2026.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "get_vacation_balance",
+          "args": {
+            "employee_id": 3,
+            "acquisition_year": 2026
+          },
+          "status": 200
+        },
+        {
+          "name": "request_vacation",
+          "args": {
+            "start_date": "2026-08-03",
+            "days": 14,
+            "acquisition_year": 2026,
+            "employee_id": 3
+          },
+          "status": 201
+        }
+      ],
+      "iters": 4,
+      "elapsed_s": 159.77,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-05",
+      "domain": "rh",
+      "task": "Solicite 10 dias de férias para Larissa Prado a partir de 2026-07-01, no ano aquisitivo 2026. Se não for possível, explique o motivo.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A solicitação não pode ser processada porque Larissa Prado foi admitida em 2026-03-12 e só adquire direito a férias após 12 meses de contratação (a partir de 2027-03-12). A data solicitada (2026-07-01) ainda não atinge o período mínimo exigido.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "request_vacation",
+          "args": {
+            "start_date": "2026-07-01",
+            "days": 10,
+            "acquisition_year": 2026,
+            "employee_id": 9
+          },
+          "status": 422
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 182.14,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-06",
+      "domain": "rh",
+      "task": "Solicite 3 dias de férias para Carlos Eduardo Pontes a partir de 2026-07-06, no ano aquisitivo 2026. Se não for possível, explique o motivo.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O período de férias solicitado (3 dias) é inválido, pois a regra exige que cada período tenha no mínimo 5 dias. Solicite pelo menos 5 dias de férias.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "get_vacation_balance",
+          "args": {
+            "employee_id": 2,
+            "acquisition_year": 2026
+          },
+          "status": 200
+        },
+        {
+          "name": "request_vacation",
+          "args": {
+            "employee_id": 2,
+            "start_date": "2026-07-06",
+            "days": 3,
+            "acquisition_year": 2026
+          },
+          "status": 422
+        }
+      ],
+      "iters": 4,
+      "elapsed_s": 215.51,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-07",
+      "domain": "rh",
+      "task": "Solicite um reembolso de refeição de R$ 90,00 para Thiago Nakamura, cobrindo 1 dia, no mês 2026-06.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Reembolso de refeição solicitado com sucesso para Thiago Nakamura (ID 8), no valor de R$ 90,00, cobrindo 1 dia no mês 2026-06.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "request_reimbursement",
+          "args": {
+            "employee_id": 8,
+            "category": "refeicao",
+            "amount": 90,
+            "days": 1,
+            "month": "2026-06"
+          },
+          "status": 201
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 87.56,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-08",
+      "domain": "rh",
+      "task": "Solicite um reembolso de viagem de R$ 4.500,00 para Rafael Monteiro no mês 2026-06. Se não for possível, explique o motivo.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O valor solicitado de R$ 4.500,00 excede o limite máximo de R$ 3.000,00 por pedido de reembolso de viagem. Solicite valores menores ou divida o pedido em múltiplos reembolsos.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "request_reimbursement",
+          "args": {
+            "employee_id": 4,
+            "category": "viagem",
+            "amount": 4500,
+            "month": "2026-06"
+          },
+          "status": 422
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 130.3,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-09",
+      "domain": "rh",
+      "task": "Tente solicitar um reembolso de home office de R$ 300,00 para André Luiz Sampaio no mês 2026-06 e me diga se é possível.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O reembolso de home office de R$ 300,00 não é possível, pois o limite mensal é de R$ 500,00 e já foram reembolsados R$ 320,00 no mês de 2026-06, restando apenas R$ 180,00 disponíveis. Solicite o valor máximo de R$ 180,00.",
+      "tool_trace": [
+        {
+          "name": "list_employees",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "request_reimbursement",
+          "args": {
+            "amount": 300,
+            "month": "2026-06",
+            "employee_id": 6,
+            "category": "home_office"
+          },
+          "status": 422
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 161.36,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "rh-10",
+      "domain": "rh",
+      "task": "Qual é o cargo do funcionário de id 99?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O funcionário com ID 99 não existe. Consulte a lista de funcionários para verificar IDs válidos.",
+      "tool_trace": [
+        {
+          "name": "get_employee",
+          "args": {
+            "employee_id": 99
+          },
+          "status": 404
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 36.87,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-01",
+      "domain": "estoque",
+      "task": "Qual é o saldo disponível para reserva do SKU MON-27P-003?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O saldo disponível para reserva do SKU MON-27P-003 é 35.",
+      "tool_trace": [
+        {
+          "name": "get_product",
+          "args": {
+            "sku": "MON-27P-003"
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 29.73,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-02",
+      "domain": "estoque",
+      "task": "Quais SKUs estão abaixo do ponto de reposição?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Os SKUs abaixo do ponto de reposição são:  \n- HUB-USB-007 (Hub USB-C 8 portas) com saldo 18 (ponto de reposição: 20)  \n- MES-ELE-002 (Mesa elevatória Standy 140cm) com saldo 8 (ponto de reposição: 12)  \n- NTB-DEV-004 (Notebook Dev 32GB RAM) com saldo 4 (ponto de reposição: 8)",
+      "tool_trace": [
+        {
+          "name": "get_replenishment",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 30.03,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-03",
+      "domain": "estoque",
+      "task": "Qual é o produto mais caro do catálogo e quanto custa?",
+      "passed": false,
+      "failures": [
+        "tool ausente na trace: list_products (trace: [])",
+        "nenhuma substring esperada na resposta: ['9.800', '9800', 'Notebook']"
+      ],
+      "error": null,
+      "final_answer": "O sistema não disponibiliza informações de preço dos produtos através das ferramentas disponíveis. Nenhuma das funções fornecidas (list_products, get_product, etc.) retorna dados de preço, portanto não é possível identificar o produto mais caro ou seu valor.",
+      "tool_trace": [],
+      "iters": 1,
+      "elapsed_s": 32.03,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-04",
+      "domain": "estoque",
+      "task": "Quantas unidades do SKU TEC-MEC-005 estão em reservas ativas?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "20 unidades do SKU TEC-MEC-005 estão em reservas ativas.",
+      "tool_trace": [
+        {
+          "name": "list_reservations",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 39.2,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-05",
+      "domain": "estoque",
+      "task": "Reserve 2 unidades do SKU CAD-ERG-001.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Reserva de 2 unidades do SKU CAD-ERG-001 confirmada com sucesso (ID: 6).",
+      "tool_trace": [
+        {
+          "name": "get_product",
+          "args": {
+            "sku": "CAD-ERG-001"
+          },
+          "status": 200
+        },
+        {
+          "name": "create_reservation",
+          "args": {
+            "quantity": 2,
+            "sku": "CAD-ERG-001"
+          },
+          "status": 201
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 58.23,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-06",
+      "domain": "estoque",
+      "task": "Liste as reservas e libere a reserva ativa do SKU CAD-ERG-001.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Reserva do SKU CAD-ERG-001 (ID 6) liberada com sucesso.",
+      "tool_trace": [
+        {
+          "name": "list_reservations",
+          "args": {},
+          "status": 200
+        },
+        {
+          "name": "release_reservation",
+          "args": {
+            "reservation_id": 6
+          },
+          "status": 200
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 120.74,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-07",
+      "domain": "estoque",
+      "task": "Reserve 50 unidades do SKU NTB-DEV-004. Se não for possível, explique o motivo.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Não é possível reservar 50 unidades do SKU NTB-DEV-004. O estoque disponível é de 4 unidades (6 em estoque - 2 reservadas). A reserva máxima permitida é de 4 unidades.",
+      "tool_trace": [
+        {
+          "name": "get_product",
+          "args": {
+            "sku": "NTB-DEV-004"
+          },
+          "status": 200
+        },
+        {
+          "name": "create_reservation",
+          "args": {
+            "sku": "NTB-DEV-004",
+            "quantity": 50
+          },
+          "status": 422
+        }
+      ],
+      "iters": 3,
+      "elapsed_s": 46.78,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-08",
+      "domain": "estoque",
+      "task": "Qual é o saldo do SKU XYZ-999?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Para verificar o saldo do SKU, primeiro precisamos confirmar se o SKU \"XYZ-999\" existe. O sistema informa que o SKU não foi encontrado. Por favor, liste os SKUs válidos usando a ferramenta `list_products` para identificar o correto.",
+      "tool_trace": [
+        {
+          "name": "get_product",
+          "args": {
+            "sku": "XYZ-999"
+          },
+          "status": 404
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 29.5,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-09",
+      "domain": "estoque",
+      "task": "Qual é a quantidade sugerida de compra para o SKU HUB-USB-007?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A quantidade sugerida de compra para o SKU HUB-USB-007 é 22.",
+      "tool_trace": [
+        {
+          "name": "get_replenishment",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 39.92,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "estoque-10",
+      "domain": "estoque",
+      "task": "Reserve 1 unidade do SKU SUP-NTB-010 e em seguida libere essa mesma reserva.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Reserva de 1 unidade do SKU SUP-NTB-010 criada com sucesso (ID 7) e liberada com sucesso.",
+      "tool_trace": [
+        {
+          "name": "get_product",
+          "args": {
+            "sku": "SUP-NTB-010"
+          },
+          "status": 200
+        },
+        {
+          "name": "create_reservation",
+          "args": {
+            "sku": "SUP-NTB-010",
+            "quantity": 1
+          },
+          "status": 201
+        },
+        {
+          "name": "release_reservation",
+          "args": {
+            "reservation_id": 7
+          },
+          "status": 200
+        }
+      ],
+      "iters": 4,
+      "elapsed_s": 100.18,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-01",
+      "domain": "vendas",
+      "task": "Qual é o total líquido do pedido 2?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O total líquido do pedido 2 é R$ 24990,00.",
+      "tool_trace": [
+        {
+          "name": "get_order",
+          "args": {
+            "order_id": 2
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 25.77,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-02",
+      "domain": "vendas",
+      "task": "Qual é a comissão do pedido 2?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A comissão do pedido 2 é de R$ 874,65.",
+      "tool_trace": [
+        {
+          "name": "get_order_commission",
+          "args": {
+            "order_id": 2
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 26.4,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-03",
+      "domain": "vendas",
+      "task": "Quantos pedidos o vendedor Rafael Monteiro possui?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Rafael Monteiro possui 5 pedidos.",
+      "tool_trace": [
+        {
+          "name": "list_orders",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 40.32,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-04",
+      "domain": "vendas",
+      "task": "Crie um pedido para o cliente Hotel Miramar, vendedor Paula Souza com papel 'vendedor', sem desconto, com 2 unidades do SKU MOU-ERG-006 a R$ 310,00 cada.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Pedido criado com sucesso (ID: 10) para o cliente Hotel Miramar, vendedor Paula Souza (papel: vendedor), total líquido R$ 620,00.",
+      "tool_trace": [
+        {
+          "name": "create_order",
+          "args": {
+            "items": [
+              {
+                "quantity": 2,
+                "sku": "MOU-ERG-006",
+                "unit_price": 310
+              }
+            ],
+            "discount_pct": 0,
+            "customer": "Hotel Miramar",
+            "salesperson": "Paula Souza",
+            "role": "vendedor"
+          },
+          "status": 201
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 73.86,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-05",
+      "domain": "vendas",
+      "task": "Crie um pedido para o cliente Mercado União, vendedor Paula Souza com papel 'vendedor' e desconto de 15%, com 1 unidade do SKU TEC-MEC-005 a R$ 520,00. Se não for permitido, explique a regra.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O desconto de 15% excede o limite de 10% para o papel 'vendedor'. Para aprovar, reduza o desconto para até 10% ou altere o papel para 'gerente' (limite de 20%).",
+      "tool_trace": [
+        {
+          "name": "create_order",
+          "args": {
+            "customer": "Mercado União",
+            "salesperson": "Paula Souza",
+            "role": "vendedor",
+            "discount_pct": 15,
+            "items": [
+              {
+                "quantity": 1,
+                "sku": "TEC-MEC-005",
+                "unit_price": 520
+              }
+            ]
+          },
+          "status": 422
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 62.81,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-06",
+      "domain": "vendas",
+      "task": "Crie um pedido para o cliente Distribuidora Pampa, vendedora Juliana Castro Neves com papel 'gerente' e desconto de 25%, com 1 unidade do SKU MOU-ERG-006 a R$ 310,00. Se não for permitido, explique a regra.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O desconto de 25% excede o limite máximo de 20% permitido pela política comercial, independentemente do papel (gerente ou vendedor). A regra estabelece que \"nenhum desconto pode exceder 20%\". Reduza o desconto para 20% ou menos para prosseguir.",
+      "tool_trace": [
+        {
+          "name": "create_order",
+          "args": {
+            "customer": "Distribuidora Pampa",
+            "salesperson": "Juliana Castro Neves",
+            "role": "gerente",
+            "discount_pct": 25,
+            "items": [
+              {
+                "quantity": 1,
+                "sku": "MOU-ERG-006",
+                "unit_price": 310
+              }
+            ]
+          },
+          "status": 422
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 55.84,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-07",
+      "domain": "vendas",
+      "task": "Detalhe o pedido de id 999.",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O pedido com ID 999 não existe. Liste os pedidos disponíveis via GET /orders para verificar IDs válidos.",
+      "tool_trace": [
+        {
+          "name": "get_order",
+          "args": {
+            "order_id": 999
+          },
+          "status": 404
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 33.39,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-08",
+      "domain": "vendas",
+      "task": "Qual cliente fez o pedido de maior valor líquido?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "Colégio Santa Cecília",
+      "tool_trace": [
+        {
+          "name": "list_orders",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 53.26,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-09",
+      "domain": "vendas",
+      "task": "Qual é a comissão do pedido 5 e qual taxa foi aplicada?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "A comissão do pedido 5 é de R$ 105,98, com taxa aplicada de 2%.",
+      "tool_trace": [
+        {
+          "name": "get_order_commission",
+          "args": {
+            "order_id": 5
+          },
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 32.43,
+      "stop_reason": "answer"
+    },
+    {
+      "id": "vendas-10",
+      "domain": "vendas",
+      "task": "Qual é o total bruto do pedido do cliente Startup Maré Alta?",
+      "passed": true,
+      "failures": [],
+      "error": null,
+      "final_answer": "O total bruto do pedido do cliente Startup Maré Alta é R$ 7.860,00.",
+      "tool_trace": [
+        {
+          "name": "list_orders",
+          "args": {},
+          "status": 200
+        }
+      ],
+      "iters": 2,
+      "elapsed_s": 40.38,
+      "stop_reason": "answer"
+    }
+  ]
+}

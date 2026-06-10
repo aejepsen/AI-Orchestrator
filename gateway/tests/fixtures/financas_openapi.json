@@ -1,0 +1,632 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Serviço de Finanças",
+    "description": "Contas a pagar e a receber, fluxo de caixa projetado e aprovação de despesas por alçada. Despesas acima de R$5.000 exigem aprovador 'gerente'; acima de R$50.000, 'diretor'.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Verifica se o serviço está no ar",
+        "operationId": "health_check",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "summary": "Lista contas a pagar e a receber",
+        "description": "Retorna todas as contas, com filtros opcionais por tipo ('pagar'/'receber') e status.",
+        "operationId": "list_accounts",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pagar",
+                    "receber"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra por tipo",
+              "title": "Type"
+            },
+            "description": "Filtra por tipo"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "aberta",
+                    "paga",
+                    "recebida"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra por status",
+              "title": "Status"
+            },
+            "description": "Filtra por status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Account"
+                  },
+                  "title": "Response List Accounts"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Cria conta a pagar ou a receber",
+        "description": "Cria uma conta. Despesas (type='pagar') passam pela alçada de aprovação: ≤ R$5.000 auto-aprovada; ≤ R$50.000 exige approver_role='gerente'; acima exige 'diretor'.",
+        "operationId": "create_account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}": {
+      "get": {
+        "summary": "Detalha uma conta pelo id",
+        "operationId": "get_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}/pay": {
+      "post": {
+        "summary": "Liquida (paga) uma conta a pagar aberta",
+        "operationId": "pay_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SettleRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}/receive": {
+      "post": {
+        "summary": "Liquida (recebe) uma conta a receber aberta",
+        "operationId": "receive_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SettleRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cashflow": {
+      "get": {
+        "summary": "Fluxo de caixa projetado por período",
+        "description": "Soma entradas (contas a receber) e saídas (contas a pagar) com vencimento entre start e end.",
+        "operationId": "get_cashflow",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Início do período (YYYY-MM-DD)",
+              "title": "Start"
+            },
+            "description": "Início do período (YYYY-MM-DD)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Fim do período (YYYY-MM-DD)",
+              "title": "End"
+            },
+            "description": "Fim do período (YYYY-MM-DD)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cashflow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Account": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "pagar",
+              "receber"
+            ],
+            "title": "Type",
+            "description": "Tipo da conta: 'pagar' (despesa) ou 'receber' (receita)"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 3,
+            "title": "Description",
+            "description": "Descrição da conta"
+          },
+          "counterparty": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Counterparty",
+            "description": "Fornecedor ou cliente"
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "description": "Valor em reais"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date",
+            "description": "Data de vencimento (YYYY-MM-DD)"
+          },
+          "approver_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "gerente",
+                  "diretor"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approver Role",
+            "description": "Papel de quem aprovou a despesa, quando exigido pela alçada"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "aberta",
+              "paga",
+              "recebida"
+            ],
+            "title": "Status"
+          },
+          "settled_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "description",
+          "counterparty",
+          "amount",
+          "due_date",
+          "id",
+          "status",
+          "settled_date"
+        ],
+        "title": "Account"
+      },
+      "AccountCreate": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "pagar",
+              "receber"
+            ],
+            "title": "Type",
+            "description": "Tipo da conta: 'pagar' (despesa) ou 'receber' (receita)"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 3,
+            "title": "Description",
+            "description": "Descrição da conta"
+          },
+          "counterparty": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Counterparty",
+            "description": "Fornecedor ou cliente"
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "description": "Valor em reais"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date",
+            "description": "Data de vencimento (YYYY-MM-DD)"
+          },
+          "approver_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "gerente",
+                  "diretor"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approver Role",
+            "description": "Papel de quem aprovou a despesa, quando exigido pela alçada"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "description",
+          "counterparty",
+          "amount",
+          "due_date"
+        ],
+        "title": "AccountCreate"
+      },
+      "Cashflow": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "entradas": {
+            "type": "number",
+            "title": "Entradas"
+          },
+          "saidas": {
+            "type": "number",
+            "title": "Saidas"
+          },
+          "saldo": {
+            "type": "number",
+            "title": "Saldo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "entradas",
+          "saidas",
+          "saldo"
+        ],
+        "title": "Cashflow"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "Health"
+      },
+      "SettleRequest": {
+        "properties": {
+          "settled_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Date",
+            "description": "Data da liquidação; default = hoje"
+          }
+        },
+        "type": "object",
+        "title": "SettleRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

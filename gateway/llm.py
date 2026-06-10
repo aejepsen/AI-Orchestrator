@@ -1,0 +1,103 @@
+"""Cliente Ollama /api/chat tipado.
+
+Decisões de latência (medições da Fase 0 e eval da Fase 2):
+- `keep_alive=-1`: MoE residente permanente — zero cold load entre chamadas.
+- `think=true`: com think=false o qwen3 vaza a cadeia de raciocínio no
+  `content` ("Okay, let's see...") e decide regras de negócio sem chamar a
+  tool (medido no 1º eval: 7/40 falhas). Com think=true o raciocínio vai
+  para o campo `thinking` (descartado) e o `content` fica limpo.
+- `stream=false`: o loop de agente consome a resposta inteira por iteração.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import Any
+
+import httpx
+
+
+class LLMError(RuntimeError):
+    """Falha de transporte ou resposta malformada do Ollama."""
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ChatResponse:
+    content: str
+    tool_calls: tuple[ToolCall, ...] = field(default_factory=tuple)
+
+    @property
+    def has_tool_calls(self) -> bool:
+        return bool(self.tool_calls)
+
+
+def _parse_tool_calls(raw_calls: list[dict[str, Any]]) -> tuple[ToolCall, ...]:
+    calls: list[ToolCall] = []
+    for raw in raw_calls:
+        function = raw.get("function", {})
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError as exc:
+                raise LLMError(f"Argumentos de tool_call não são JSON válido: {arguments!r}") from exc
+        calls.append(ToolCall(name=function.get("name", ""), arguments=arguments or {}))
+    return tuple(calls)
+
+
+class OllamaClient:
+    """Cliente síncrono do endpoint /api/chat com suporte a tools."""
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        timeout_s: float = 300.0,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._client = client or httpx.Client(timeout=timeout_s)
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        format: str | dict[str, Any] | None = None,
+    ) -> ChatResponse:
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "stream": False,
+            "think": True,
+            "keep_alive": -1,
+            "options": {"temperature": temperature},
+        }
+        if tools:
+            payload["tools"] = tools
+        if format is not None:
+            payload["format"] = format
+        try:
+            response = self._client.post(f"{self._base_url}/api/chat", json=payload)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Falha na chamada ao Ollama ({self._base_url}): {exc}") from exc
+
+        data = response.json()
+        message = data.get("message")
+        if not isinstance(message, dict):
+            raise LLMError(f"Resposta do Ollama sem campo 'message': {data!r}")
+        return ChatResponse(
+            content=(message.get("content") or "").strip(),
+            tool_calls=_parse_tool_calls(message.get("tool_calls") or []),
+        )

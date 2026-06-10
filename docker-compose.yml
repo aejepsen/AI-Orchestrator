@@ -1,0 +1,109 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-orchestrator-ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      # MoE 30B-A3B Q4 precisa ~17.8 GiB total: ~10 GiB GPU + ~8 GiB RAM/swap.
+      - OLLAMA_KEEP_ALIVE=5m
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: ai-orchestrator-gateway
+    ports:
+      - "8100:8000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - SERVICE_URL_FINANCAS=http://financas:8000
+      - SERVICE_URL_RH=http://rh:8000
+      - SERVICE_URL_ESTOQUE=http://estoque:8000
+      - SERVICE_URL_VENDAS=http://vendas:8000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      # Fan-out 3 domínios enfileira no MoE único (Ollama serializa): o 3º agente
+      # espera ~2 loops inteiros antes de começar — 300 s estourava (medido na demo).
+      - LLM_TIMEOUT_S=900
+    depends_on:
+      - ollama
+      - financas
+      - rh
+      - estoque
+      - vendas
+    restart: unless-stopped
+
+  financas:
+    build:
+      context: ./services
+      args:
+        SERVICE: financas
+    container_name: ai-orchestrator-financas
+    ports:
+      - "8101:8000"
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+    volumes:
+      - financas_data:/data
+    restart: unless-stopped
+
+  rh:
+    build:
+      context: ./services
+      args:
+        SERVICE: rh
+    container_name: ai-orchestrator-rh
+    ports:
+      - "8102:8000"
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+    volumes:
+      - rh_data:/data
+    restart: unless-stopped
+
+  estoque:
+    build:
+      context: ./services
+      args:
+        SERVICE: estoque
+    container_name: ai-orchestrator-estoque
+    ports:
+      - "8103:8000"
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+    volumes:
+      - estoque_data:/data
+    restart: unless-stopped
+
+  vendas:
+    build:
+      context: ./services
+      args:
+        SERVICE: vendas
+    container_name: ai-orchestrator-vendas
+    ports:
+      - "8104:8000"
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+    volumes:
+      - vendas_data:/data
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  financas_data:
+  rh_data:
+  estoque_data:
+  vendas_data:

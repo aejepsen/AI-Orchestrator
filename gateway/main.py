@@ -18,14 +18,17 @@ import asyncio
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gateway.agents import DomainAgentRunner
 from gateway.graph import GatewayGraph
+from gateway.security import AccessTokenGuard, RateLimiter, client_ip
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -40,9 +43,18 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def create_app(graph_factory: Callable[[], GatewayGraph] | None = None) -> FastAPI:
-    app = FastAPI(title="AI-Orchestrator Gateway", version="0.3.0")
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+def create_app(
+    graph_factory: Callable[[], GatewayGraph] | None = None,
+    access_guard: AccessTokenGuard | None = None,
+    rate_limiter: RateLimiter | None = None,
+) -> FastAPI:
+    app = FastAPI(title="AI-Orchestrator Gateway", version="0.4.0")
     factory = graph_factory or (lambda: GatewayGraph(DomainAgentRunner()))
+    guard = access_guard or AccessTokenGuard()
+    limiter = rate_limiter or RateLimiter()
 
     def get_graph() -> GatewayGraph:
         # Lazy + cacheado: registry (OpenAPI dos serviços) só no primeiro /chat.
@@ -54,8 +66,20 @@ def create_app(graph_factory: Callable[[], GatewayGraph] | None = None) -> FastA
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/chat")
-    async def chat(request: ChatRequest) -> StreamingResponse:
+    @app.post("/chat", response_model=None)
+    async def chat(body: ChatRequest, http_request: Request) -> StreamingResponse | JSONResponse:
+        if not guard.allows(http_request.headers.get("x-access-token")):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "detail": "Token de acesso ausente ou inválido."},
+            )
+        fallback_ip = http_request.client.host if http_request.client else "unknown"
+        if not limiter.allow(client_ip(http_request.headers, fallback_ip)):
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limited", "detail": "Limite de requisições por hora atingido."},
+            )
+
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue()
         trace_id = str(uuid.uuid4())
@@ -67,7 +91,7 @@ def create_app(graph_factory: Callable[[], GatewayGraph] | None = None) -> FastA
             try:
                 graph = get_graph()
                 stream = graph.stream(
-                    request.question,
+                    body.question,
                     trace_id=trace_id,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),
                 )
@@ -93,6 +117,11 @@ def create_app(graph_factory: Callable[[], GatewayGraph] | None = None) -> FastA
             await future
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    # Frontend buildado (Vite) servido pelo próprio gateway. Montado por último:
+    # /health e /chat têm precedência; html=True serve index.html na raiz.
+    if _FRONTEND_DIST.is_dir():
+        app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
 
     return app
 

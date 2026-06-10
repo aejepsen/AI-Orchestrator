@@ -83,6 +83,27 @@ curl -N -X POST localhost:8100/chat -H 'content-type: application/json' \
   -d '{"question": "Posso aceitar um pedido de 100 unidades do SKU TEC-MEC-005 com 15% de desconto?"}'
 ```
 
+Interface web
+
+Chat single-page (Vite + React + Tailwind v4) servido pelo próprio gateway: o trace multi-agente é renderizado ao vivo — chips de roteamento por domínio, um card por subagente concluído (fan-out visível) e a síntese final, com cronômetro honesto para a latência do modelo local.
+
+```bash
+# desenvolvimento (proxy /chat → gateway em :8100)
+cd frontend && npm install && npm run dev
+
+# build de produção (o Dockerfile do gateway já faz isso em multi-stage)
+cd frontend && npm run build        # gateway serve frontend/dist na raiz
+```
+
+Exposição pública (suasalada.com.br) via Cloudflare Tunnel — profile `public`:
+
+```bash
+ACCESS_TOKEN=<token-do-chat> TUNNEL_TOKEN=<token-do-tunnel> \
+  docker compose --profile public up -d --build
+```
+
+Boundary público em `gateway/security.py`: `X-Access-Token` comparado com `ACCESS_TOKEN` via `hmac.compare_digest` (sem a env, modo dev aberto) + rate limit em memória por IP (`RATE_LIMIT_PER_HOUR`, default 10, 429 ao exceder), honrando o primeiro hop de `X-Forwarded-For` atrás do Cloudflare.
+
 Evals e testes:
 
 ```bash

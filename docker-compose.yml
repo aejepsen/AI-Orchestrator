@@ -34,6 +34,9 @@ services:
       - SERVICE_URL_ESTOQUE=http://estoque:8000
       - SERVICE_URL_VENDAS=http://vendas:8000
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      # Boundary público: sem ACCESS_TOKEN o /chat fica aberto (modo dev).
+      - ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10}
       # Fan-out 3 domínios enfileira no MoE único (Ollama serializa): o 3º agente
       # espera ~2 loops inteiros antes de começar — 300 s estourava (medido na demo).
       - LLM_TIMEOUT_S=900
@@ -99,6 +102,20 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
     volumes:
       - vendas_data:/data
+    restart: unless-stopped
+
+  # Exposição pública via Cloudflare Tunnel (suasalada.com.br).
+  # Só sobe com o profile "public": docker compose --profile public up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ai-orchestrator-cloudflared
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - gateway
+    profiles:
+      - public
     restart: unless-stopped
 
 volumes:

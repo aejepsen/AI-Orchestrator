@@ -15,6 +15,7 @@ _EMPLOYEES = [
     ("Thiago Nakamura", "RH", "Business Partner", 540, 10_500.00),
     ("Larissa Prado", "Engenharia", "Engenheira de Software Júnior", 90, 6_200.00),  # sem direito a férias
     ("Gustavo Bittencourt", "Operações", "Analista de Logística", 400, 5_400.00),
+    ("Paula Souza", "Vendas", "Executiva de Contas", 980, 9_400.00),
 ]
 
 

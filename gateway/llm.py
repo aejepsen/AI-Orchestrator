@@ -79,7 +79,9 @@ class OllamaClient:
             "model": self._model,
             "messages": messages,
             "stream": False,
-            "think": True,
+            # think só em modelos com modo de raciocínio (qwen3); o Ollama
+            # rejeita o parâmetro em modelos sem suporte (ex.: qwen2.5).
+            "think": self._model.startswith("qwen3"),
             "keep_alive": -1,
             "options": {"temperature": temperature},
         }

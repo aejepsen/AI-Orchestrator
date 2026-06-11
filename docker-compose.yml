@@ -29,6 +29,9 @@ services:
       - "127.0.0.1:8100:8000"
     environment:
       - OLLAMA_URL=http://ollama:11434
+      # Modelo do grafo (classificador/agentes/síntese). Na RTX 3060 (12 GB) o
+      # 30b-a3b transborda 44% pra CPU — latência alta; 7b roda 100% na GPU.
+      - MODEL=${MODEL:-qwen3:30b-a3b}
       - SERVICE_URL_FINANCAS=http://financas:8000
       - SERVICE_URL_RH=http://rh:8000
       - SERVICE_URL_ESTOQUE=http://estoque:8000

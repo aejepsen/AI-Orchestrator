@@ -109,8 +109,15 @@ def create_app(
         future = loop.run_in_executor(None, worker)
 
         async def event_stream():
+            # Heartbeat: Cloudflare encerra com 524 após ~100 s sem bytes; os
+            # agentes podem ficar minutos entre eventos. Comentário SSE (":")
+            # mantém a conexão viva e é ignorado pelos parsers.
             while True:
-                event, data = await queue.get()
+                try:
+                    event, data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
                 if (event, data) == _SENTINEL:
                     break
                 yield _sse(event, data or {})

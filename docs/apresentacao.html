@@ -406,8 +406,8 @@
         <td class="mut">Não (mas infra de terceiro)</td>
       </tr>
       <tr>
-        <td><strong>Esta arquitetura</strong> — GPU própria (RTX 3060 12 GB) + energia</td>
-        <td class="good">~R$ 50 (energia)</td>
+        <td><strong>Esta arquitetura</strong> — GPU própria (RTX 3060 12 GB): energia + amortização</td>
+        <td class="good">~R$ 100 (50 energia + 50 amortização)</td>
         <td class="good">Não</td>
       </tr>
     </tbody>
@@ -419,9 +419,9 @@
       Cloudflare Tunnel no plano gratuito; domínio R$ 40/ano.</p>
     </div>
     <div class="card accent-green">
-      <span class="big-number">&lt; 1 mês</span>
-      <p style="margin-top:10px">de payback do hardware (~R$ 1.800) frente à GPU em nuvem;
-      ~2 meses frente ao consumo de API em volume moderado.</p>
+      <span class="big-number">~R$ 100/mês</span>
+      <p style="margin-top:10px">TCO mensal amortizado: energia + hardware (~R$ 1.800 ÷ 36 meses).
+      8–16× mais barato que API frontier; ~40× que GPU em nuvem.</p>
     </div>
     <div class="card accent-green">
       <span class="big-number">LGPD ✓</span>
@@ -432,6 +432,7 @@
   <p class="footnote">* Estimativas com câmbio R$ 5,30/US$. API: 40k tokens/consulta
   (medido na demo com fan-out de 3 domínios) a preços públicos de GPT-4o (US$ 2,50/M input,
   US$ 10/M output). Energia: ~170 W de GPU em uso intermitente, tarifa média residencial.
+  Amortização: RTX 3060 (~R$ 1.800) linear em 36 meses de vida útil, valor residual zero.
   O custo de API escala linearmente com o volume; o on-premise é praticamente flat até a
   saturação da GPU — quanto maior o uso, maior a economia.</p>
 </section>

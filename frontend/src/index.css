@@ -63,3 +63,18 @@ body {
 .animate-pulse-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background-image: linear-gradient(90deg, transparent, #ffffff0a, transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}

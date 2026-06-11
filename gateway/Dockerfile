@@ -22,5 +22,8 @@ RUN pip install --no-cache-dir -r /app/gateway/requirements.txt
 COPY gateway/ /app/gateway/
 COPY --from=frontend /build/dist /app/frontend/dist
 
+RUN useradd -m app
+USER app
+
 EXPOSE 8000
 CMD ["uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]

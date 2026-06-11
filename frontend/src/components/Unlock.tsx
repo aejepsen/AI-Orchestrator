@@ -12,7 +12,7 @@ export function Unlock({ error, onUnlock }: { error: string | null; onUnlock: (t
     <main className="flex min-h-dvh items-center justify-center px-6">
       <form onSubmit={submit} className="animate-fade-up w-full max-w-sm space-y-6">
         <header className="space-y-1.5">
-          <h1 className="text-lg font-semibold tracking-tight">AI-Orchestrator</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.03em]">AI-Orchestrator</h1>
           <p className="text-sm leading-relaxed text-muted">
             Gateway multi-agente on-premise. Informe o token de acesso para continuar.
           </p>
@@ -25,7 +25,7 @@ export function Unlock({ error, onUnlock }: { error: string | null; onUnlock: (t
             placeholder="Token de acesso"
             autoFocus
             aria-label="Token de acesso"
-            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:outline-none"
+            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:ring-1 focus:ring-white/10 focus:outline-none"
           />
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button

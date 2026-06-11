@@ -1,6 +1,14 @@
 import { useState, type FormEvent } from "react";
 
-export function Composer({ disabled, onSend }: { disabled: boolean; onSend: (question: string) => void }) {
+export function Composer({
+  disabled,
+  onSend,
+  onStop,
+}: {
+  disabled: boolean;
+  onSend: (question: string) => void;
+  onStop?: () => void;
+}) {
   const [value, setValue] = useState("");
 
   function submit(event: FormEvent) {
@@ -27,15 +35,26 @@ export function Composer({ disabled, onSend }: { disabled: boolean; onSend: (que
         disabled={disabled}
         placeholder={disabled ? "Aguardando resposta do gateway…" : "Pergunte sobre finanças, RH, estoque ou vendas…"}
         aria-label="Pergunta"
-        className="max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:outline-none disabled:opacity-50"
+        className="max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:ring-1 focus:ring-white/10 focus:outline-none disabled:opacity-50"
       />
-      <button
-        type="submit"
-        disabled={disabled || !value.trim()}
-        className="h-11 shrink-0 rounded-xl bg-accent px-4 text-sm font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        Enviar
-      </button>
+      {disabled && onStop ? (
+        <button
+          type="button"
+          onClick={onStop}
+          className="h-11 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors hover:bg-raised"
+          style={{ borderColor: "var(--color-line-strong)", color: "var(--color-muted)" }}
+        >
+          Parar
+        </button>
+      ) : (
+        <button
+          type="submit"
+          disabled={disabled || !value.trim()}
+          className="h-11 shrink-0 rounded-xl bg-accent px-4 text-sm font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          Enviar
+        </button>
+      )}
     </form>
   );
 }

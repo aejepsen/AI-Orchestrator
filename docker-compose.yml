@@ -3,7 +3,7 @@ services:
     image: ollama/ollama:latest
     container_name: ai-orchestrator-ollama
     ports:
-      - "11435:11434"
+      - "127.0.0.1:11435:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -26,14 +26,14 @@ services:
       dockerfile: gateway/Dockerfile
     container_name: ai-orchestrator-gateway
     ports:
-      - "8100:8000"
+      - "127.0.0.1:8100:8000"
     environment:
       - OLLAMA_URL=http://ollama:11434
       - SERVICE_URL_FINANCAS=http://financas:8000
       - SERVICE_URL_RH=http://rh:8000
       - SERVICE_URL_ESTOQUE=http://estoque:8000
       - SERVICE_URL_VENDAS=http://vendas:8000
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
       # Boundary público: sem ACCESS_TOKEN o /chat fica aberto (modo dev).
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10}
@@ -46,6 +46,11 @@ services:
       - rh
       - estoque
       - vendas
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   financas:
@@ -55,11 +60,16 @@ services:
         SERVICE: financas
     container_name: ai-orchestrator-financas
     ports:
-      - "8101:8000"
+      - "127.0.0.1:8101:8000"
     environment:
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
     volumes:
       - financas_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   rh:
@@ -69,11 +79,16 @@ services:
         SERVICE: rh
     container_name: ai-orchestrator-rh
     ports:
-      - "8102:8000"
+      - "127.0.0.1:8102:8000"
     environment:
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
     volumes:
       - rh_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   estoque:
@@ -83,11 +98,16 @@ services:
         SERVICE: estoque
     container_name: ai-orchestrator-estoque
     ports:
-      - "8103:8000"
+      - "127.0.0.1:8103:8000"
     environment:
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
     volumes:
       - estoque_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   vendas:
@@ -97,11 +117,16 @@ services:
         SERVICE: vendas
     container_name: ai-orchestrator-vendas
     ports:
-      - "8104:8000"
+      - "127.0.0.1:8104:8000"
     environment:
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
     volumes:
       - vendas_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # Exposição pública via Cloudflare Tunnel (suasalada.com.br).

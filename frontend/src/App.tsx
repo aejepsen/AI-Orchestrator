@@ -144,6 +144,14 @@ export default function App() {
         <div className="mx-auto flex w-full max-w-3xl items-baseline gap-3 px-4 py-4 sm:px-6">
           <h1 className="text-sm font-semibold tracking-tight">AI-Orchestrator</h1>
           <p className="text-xs text-faint">Gateway multi-agente on-premise</p>
+          <a
+            href="/apresentacao/"
+            target="_blank"
+            rel="noopener"
+            className="ml-auto self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+          >
+            Apresentação ↗
+          </a>
         </div>
       </header>
 

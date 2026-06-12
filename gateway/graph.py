@@ -72,13 +72,32 @@ def _log_node(state: GraphState, node: str, started: float, domains: list[str] |
 class GatewayGraph:
     """Grafo compilado, reusável entre requests (runner e LLM cacheados)."""
 
-    def __init__(self, runner: DomainAgentRunner, llm: OllamaClient | None = None) -> None:
+    def __init__(
+        self,
+        runner: DomainAgentRunner,
+        llm: OllamaClient | None = None,
+        semantic: "SemanticRouter | None" = None,
+    ) -> None:
         self._runner = runner
         self._llm = llm or OllamaClient(
             runner.settings.ollama_url,
             runner.settings.model,
             timeout_s=runner.settings.llm_timeout_s,
+            keep_alive=runner.settings.keep_alive,
         )
+        settings = getattr(runner, "settings", None)
+        if semantic is None and settings is not None and settings.semantic_enabled:
+            from gateway.semantic_router import SemanticRouter
+
+            semantic = SemanticRouter(
+                settings.qdrant_url,
+                self._llm,
+                embed_model=settings.embed_model,
+                examples_path=settings.routing_examples_path,
+                threshold=settings.semantic_threshold,
+                top_k=settings.semantic_top_k,
+            )
+        self._semantic = semantic
         self._compiled = self._build()
 
     # -- nós -----------------------------------------------------------------
@@ -93,7 +112,7 @@ class GatewayGraph:
 
     def _classify(self, state: GraphState) -> GraphState:
         started = time.monotonic()
-        route = classify_intent(state["sanitized"], self._llm)
+        route = classify_intent(state["sanitized"], self._llm, semantic=self._semantic)
         update: GraphState = {"route": route.model_dump()}
         _log_node({**state, **update}, "classify", started)
         return update

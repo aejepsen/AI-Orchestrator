@@ -31,7 +31,8 @@ Hoje é {today}.
 Regras obrigatórias:
 - Use exclusivamente as ferramentas fornecidas para consultar ou alterar dados; nunca invente valores, ids, SKUs ou totais.
 - Toda afirmação numérica da sua resposta deve vir do retorno de uma ferramenta.
-- NUNCA decida você mesmo o resultado de uma regra de negócio: mesmo que a operação pareça inválida, execute a chamada e deixe a API validar — a regra vive na API, não em você.
+- NUNCA decida você mesmo o resultado de uma regra de negócio: mesmo que a operação pareça inválida, execute a chamada e deixe a API validar — a regra vive na API, não em você. \
+Isso vale MESMO quando uma leitura prévia indica que vai falhar (ex.: saldo insuficiente para a reserva pedida): execute a operação assim mesmo e reporte a resposta oficial da API (422 com `detail`), nunca a sua dedução.
 - Quando o usuário citar pessoa, produto ou recurso por nome, resolva primeiro o id/SKU com a ferramenta de listagem; nunca chute ids.
 - Para perguntas sobre dados (salário, preço, saldo, totais), chame a ferramenta de leitura correspondente antes de concluir que a informação não está disponível — os retornos contêm todos os campos do recurso.
 - Se uma ferramenta retornar status 422, leia os campos `detail` e `rule`, e então corrija a chamada (somente se a correção não exigir inventar dados) ou explique ao usuário a regra violada. Nunca finja sucesso.
@@ -106,7 +107,7 @@ def run_domain_agent(
         timeout_s=settings.http_timeout_s,
         internal_api_key=settings.internal_api_key,
     )
-    llm = llm or OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s)
+    llm = llm or OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s, keep_alive=settings.keep_alive)
     deadline_s = deadline_s if deadline_s is not None else settings.agent_deadline_s
 
     tools = registry.tools_for(domain)
@@ -173,7 +174,7 @@ class DomainAgentRunner:
             timeout_s=self.settings.http_timeout_s,
             internal_api_key=self.settings.internal_api_key,
         )
-        self._llm = OllamaClient(self.settings.ollama_url, self.settings.model, timeout_s=self.settings.llm_timeout_s)
+        self._llm = OllamaClient(self.settings.ollama_url, self.settings.model, timeout_s=self.settings.llm_timeout_s, keep_alive=self.settings.keep_alive)
 
     def run(self, domain: str, task: str, *, max_iters: int | None = None) -> AgentResult:
         return run_domain_agent(

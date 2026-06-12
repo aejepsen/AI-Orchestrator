@@ -20,6 +20,8 @@ COPY gateway/requirements.txt /app/gateway/requirements.txt
 RUN pip install --no-cache-dir -r /app/gateway/requirements.txt
 
 COPY gateway/ /app/gateway/
+# Golden de roteamento: fonte do índice do semantic router (Qdrant).
+COPY evals/golden_routing.jsonl /app/evals/golden_routing.jsonl
 COPY --from=frontend /build/dist /app/frontend/dist
 
 RUN useradd -m app

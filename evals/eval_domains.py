@@ -35,6 +35,8 @@ from gateway.agents import AgentResult, DomainAgentRunner  # noqa: E402
 from gateway.config import DOMAINS, load_settings  # noqa: E402
 from gateway.llm import OllamaClient  # noqa: E402
 
+from evals.common import with_deadline  # noqa: E402
+
 GOLDEN_PATH = ROOT / "evals" / "golden_domains.jsonl"
 RESULTS_DIR = ROOT / "evals" / "results"
 GATE_PCT = 80.0
@@ -103,7 +105,7 @@ def check(record: dict[str, Any], result: AgentResult) -> list[str]:
 def warm_up(settings) -> float:
     """Uma chamada curta para garantir o MoE residente (cold load ~55 s)."""
     print("Warm-up do MoE (pode levar ~1 min em cold load)...", flush=True)
-    llm = OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s)
+    llm = OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s, keep_alive=settings.keep_alive)
     started = time.monotonic()
     llm.chat([{"role": "user", "content": "Responda apenas: ok"}])
     elapsed = time.monotonic() - started
@@ -120,7 +122,7 @@ def run(records: list[dict[str, Any]]) -> list[TaskOutcome]:
     for i, record in enumerate(records, start=1):
         outcome = TaskOutcome(record=record)
         try:
-            outcome.result = runner.run(record["domain"], record["task"])
+            outcome.result = with_deadline(runner.run, record["domain"], record["task"])
             outcome.failures = check(record, outcome.result)
         except Exception as exc:  # noqa: BLE001 — eval reporta, não quebra
             outcome.error = f"{type(exc).__name__}: {exc}"

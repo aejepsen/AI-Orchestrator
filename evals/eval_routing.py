@@ -7,6 +7,7 @@ Uso:
     .venv/bin/python evals/eval_routing.py
     .venv/bin/python evals/eval_routing.py --limit 10
     .venv/bin/python evals/eval_routing.py --only-fails evals/results/routing_<ts>.json
+    .venv/bin/python evals/eval_routing.py --semantic   # camada Qdrant em leave-one-out
 """
 
 from __future__ import annotations
@@ -23,7 +24,10 @@ sys.path.insert(0, str(ROOT))
 
 from gateway.config import load_settings  # noqa: E402
 from gateway.llm import OllamaClient  # noqa: E402
-from gateway.router import classify_intent  # noqa: E402
+from gateway.router import RoutePlan, classify_intent  # noqa: E402
+from gateway.semantic_router import SemanticRouter  # noqa: E402
+
+from evals.common import CaseTimeout, with_deadline  # noqa: E402
 
 GOLDEN = ROOT / "evals" / "golden_routing.jsonl"
 RESULTS_DIR = ROOT / "evals" / "results"
@@ -44,6 +48,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Eval de roteamento (gate >= 90%)")
     parser.add_argument("--limit", type=int, default=None, help="avalia só as N primeiras perguntas")
     parser.add_argument("--only-fails", default=None, help="re-roda só as falhas de um results.json anterior")
+    parser.add_argument(
+        "--semantic",
+        action="store_true",
+        help="ativa a camada semântica (Qdrant) em leave-one-out: a própria pergunta é excluída do índice",
+    )
     args = parser.parse_args()
 
     records = load_golden()
@@ -57,13 +66,46 @@ def main() -> int:
         records = records[: args.limit]
 
     settings = load_settings()
-    llm = OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s)
+    llm = OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s, keep_alive=settings.keep_alive)
+    semantic = None
+    if args.semantic:
+        semantic = SemanticRouter(
+            settings.qdrant_url,
+            llm,
+            embed_model=settings.embed_model,
+            examples_path=str(GOLDEN),
+            threshold=settings.semantic_threshold,
+            top_k=settings.semantic_top_k,
+        )
+        semantic.ensure_ready()
+
+        class _LeaveOneOut:
+            """A própria pergunta está no índice — excluída para não casar consigo mesma."""
+
+            def __init__(self, inner: SemanticRouter) -> None:
+                self._inner = inner
+
+            def route(self, question: str, **_: object):
+                return self._inner.route(question, exclude_question=question)
+
+        semantic = _LeaveOneOut(semantic)
 
     items: list[dict] = []
     hits = 0
+    layer_counts: dict[str, int] = {"semantic": 0, "llm": 0, "lexical": 0}
     for i, record in enumerate(records, 1):
         started = time.monotonic()
-        route = classify_intent(record["question"], llm)
+        try:
+            route = with_deadline(classify_intent, record["question"], llm, semantic=semantic)
+        except CaseTimeout as exc:
+            route = RoutePlan(domains=[], plan="", clarification=f"watchdog: {exc}")
+        if route.plan.startswith("Roteado por similaridade"):
+            layer = "semantic"
+        elif route.plan.startswith("Roteado por keywords"):
+            layer = "lexical"
+        else:
+            layer = "llm"
+        layer_counts[layer] += 1
         elapsed = round(time.monotonic() - started, 2)
 
         got_domains = set(route.domains)
@@ -85,6 +127,7 @@ def main() -> int:
                 "got_domains": sorted(got_domains),
                 "got_clarification": got_clarification,
                 "plan": route.plan,
+                "layer": layer,
                 "elapsed_s": elapsed,
                 "ok": ok,
             }
@@ -93,6 +136,15 @@ def main() -> int:
     accuracy = hits / len(records) if records else 0.0
     passed = accuracy >= GATE
     print(f"\nAcurácia: {hits}/{len(records)} = {accuracy:.1%} — gate {GATE:.0%}: {'PASS' if passed else 'FAIL'}")
+    if args.semantic:
+        avg = {
+            layer: round(
+                sum(it["elapsed_s"] for it in items if it["layer"] == layer) / count, 2
+            )
+            for layer, count in layer_counts.items()
+            if count
+        }
+        print(f"Camadas: {layer_counts} | latência média por camada (s): {avg}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"routing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -101,6 +153,8 @@ def main() -> int:
             {
                 "timestamp": datetime.now().isoformat(),
                 "model": settings.model,
+                "semantic": args.semantic,
+                "layer_counts": layer_counts,
                 "total": len(records),
                 "hits": hits,
                 "accuracy": round(accuracy, 4),

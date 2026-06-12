@@ -22,22 +22,23 @@ Resultados (medidos)
 Arquitetura
 
 ```
-                         ┌──────────────────────────────────────────────┐
-                         │  Gateway (FastAPI, porta 8100)               │
- cliente ── POST /chat ─▶│  LangGraph: sanitize → classify ─┬─ clarif.  │
-            (SSE)        │            dispatch (fan-out) ───┤           │
-                         │            synthesize (fan-in) ──┘           │
-                         └───────┬──────────────────────┬───────────────┘
-                                 │ tools (OpenAPI)      │ /api/chat
-                  X-Internal-Key │                      ▼
-        ┌──────────┬─────────────┼──────────┐   ┌───────────────────┐
-        ▼          ▼             ▼          ▼   │ Ollama (11435)    │
-   ┌─────────┐┌─────────┐ ┌─────────┐┌─────────┐│ qwen3:30b-a3b MoE │
-   │financas ││   rh    │ │ estoque ││ vendas  ││ residente         │
-   │  :8101  ││  :8102  │ │  :8103  ││  :8104  ││ keep_alive=-1     │
-   └─────────┘└─────────┘ └─────────┘└─────────┘│ ~10GiB GPU+8GiB RAM│
-    FastAPI + Pydantic v2 + SQLite por serviço  └───────────────────┘
-    regras de negócio determinísticas, erro 422 {error, detail, rule}
+                       ┌────────────────────────────────────────────────┐
+                       │  Gateway (FastAPI, porta 8100)                 │
+ cliente ─ POST /chat ▶│  LangGraph: sanitize → classify ──┬─ clarif.   │
+           (SSE)       │  classify = semântico→LLM→léxico  │            │
+                       │            dispatch (fan-out) ────┤            │
+                       │            synthesize (fan-in) ───┘            │
+                       └──────┬───────────────┬──────────────┬──────────┘
+                              │ tools         │ /api/chat    │ kNN cosine
+               X-Internal-Key │ (OpenAPI)     │ /api/embed   ▼
+     ┌──────────┬─────────────┼──────────┐  ┌─▼───────────┐ ┌─────────────┐
+     ▼          ▼             ▼          ▼  │Ollama 11435 │ │Qdrant 6333  │
+┌─────────┐┌─────────┐ ┌─────────┐┌─────────┐ chat: MODEL │ │ routing_    │
+│financas ││   rh    │ │ estoque ││ vendas  │ embed:nomic-│ │ examples    │
+│  :8101  ││  :8102  │ │  :8103  ││  :8104  │ embed-text  │ │ (golden set │
+└─────────┘└─────────┘ └─────────┘└─────────┘ residentes  │ │  indexado)  │
+ FastAPI + Pydantic v2 + SQLite por serviço └─────────────┘ └─────────────┘
+ regras de negócio determinísticas, erro 422 {error, detail, rule}
 ```
 
 **Decisões medidas, não assumidas:**
@@ -48,12 +49,14 @@ Arquitetura
 | `think=true` no qwen3                                        | Com `think=false` o modelo vaza CoT no `content` E pré-computa regra de negócio sem chamar a tool (eval caiu pra 82.5%, rh 60%). Com `think=true` + regras explícitas no prompt → 95%.                               |
 | Tools geradas do `openapi.json`                              | Única fonte de verdade é a API; schema drift impossível. 422/404 voltam como **observação** pro loop do agente, nunca exceção.                                                                                   |
 | `LLM_TIMEOUT_S=900` no gateway                               | Fan-out de 3 agentes enfileira no MoE único (Ollama serializa): o 3º agente espera ~2 loops inteiros — 300 s estourava (medido na demo).                                                                                    |
+| **Semantic router como cache, não como classificador** (Qdrant kNN, threshold 0.92 + consenso unânime) | Com threshold 0.80 o eval leave-one-out caiu pra 84.1%: vizinhos a score 0.83–0.88 com conjuntos de domínios diferentes erravam os casos multi-domínio. A banda 0.80–0.90 não separa acerto de erro; a 0.92 a camada só dispara em pergunta quase idêntica e o LLM classifier decide o resto. |
 
 Latências medidas (warm, RTX 3060 + split CPU)
 
 | Etapa                                                                    | Latência típica         |
 | ------------------------------------------------------------------------ | ------------------------- |
-| Classify (roteamento)                                                    | 15–70 s                  |
+| Classify — hit semântico (Qdrant kNN, pergunta já conhecida)            | **~0.1 s**               |
+| Classify — LLM (pergunta nova)                                           | 15–70 s                  |
 | Task single-domain (loop 2–4 iterações de tool-calling)               | 26–216 s (mediana ~55 s) |
 | Caso demo 3 domínios end-to-end (route → fan-out paralelo → síntese) | **480 s**           |
 | Cold load do MoE (uma vez por boot)                                      | 55 s                      |
@@ -77,6 +80,7 @@ Como rodar
 ```bash
 docker compose up -d --build          # ollama + gateway + 4 microsserviços
 docker exec ai-orchestrator-ollama ollama pull qwen3:30b-a3b
+docker exec ai-orchestrator-ollama ollama pull nomic-embed-text   # embeddings do semantic router
 
 # pergunta multi-domínio via SSE
 curl -N -X POST localhost:8100/chat -H 'content-type: application/json' \
@@ -110,7 +114,8 @@ Evals e testes:
 python -m venv .venv && .venv/bin/pip install -r services/requirements.txt
 .venv/bin/python -m pytest services gateway/tests -q        # 182 testes, sem LLM
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_domains.py    # 40 tasks
-.venv/bin/python evals/eval_routing.py                       # 42 perguntas
+.venv/bin/python evals/eval_routing.py                       # 44 perguntas
+.venv/bin/python evals/eval_routing.py --semantic            # + camada Qdrant (leave-one-out)
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_injection.py  # 6 casos
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/demo.py            # 5 conversas
 ```
@@ -118,7 +123,7 @@ INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/demo.py            # 5 
 Estrutura
 
 ```
-gateway/            # Experience Layer: graph (LangGraph), router, agents, sanitize, SSE
+gateway/            # Experience Layer: graph (LangGraph), router (semântico→LLM→léxico), agents, sanitize, SSE
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
 services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas)
 evals/              # golden sets + gates (fase0_bench, domains, routing, injection, demo)
@@ -131,4 +136,4 @@ Backlog (fora do escopo da PoC)
 
 - Reset de estado dos serviços entre runs de eval (resíduo financas-09: conta já liquidada de run anterior).
 - Registry anexar campos do schema de resposta à description da tool (resíduo estoque-03: modelo julga capacidade da tool só pela descrição).
-- Streaming token-a-token na síntese; RAG sobre documentos; UI.
+- Streaming token-a-token na síntese; RAG sobre documentos não estruturados.

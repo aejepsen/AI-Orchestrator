@@ -61,11 +61,31 @@ class OllamaClient:
         model: str,
         *,
         timeout_s: float = 300.0,
+        keep_alive: str = "30m",
         client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        # NUNCA -1: modelo residente permanente impede o Ollama de despejar
+        # VRAM quando outro modelo precisa carregar → deadlock do scheduler
+        # (request espera espaço que nunca libera). 30m mantém quente sob
+        # tráfego real e ainda permite eviction.
+        self._keep_alive = keep_alive
         self._client = client or httpx.Client(timeout=timeout_s)
+
+    def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
+        """Embeddings em lote via /api/embed (modelo dedicado, ex.: nomic-embed-text)."""
+        payload = {"model": model, "input": texts, "keep_alive": self._keep_alive}
+        try:
+            response = self._client.post(f"{self._base_url}/api/embed", json=payload)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Falha no embedding via Ollama ({self._base_url}): {exc}") from exc
+        data = response.json()
+        embeddings = data.get("embeddings")
+        if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+            raise LLMError(f"Resposta de /api/embed malformada: {data!r}")
+        return embeddings
 
     def chat(
         self,
@@ -82,7 +102,7 @@ class OllamaClient:
             # think só em modelos com modo de raciocínio (qwen3); o Ollama
             # rejeita o parâmetro em modelos sem suporte (ex.: qwen2.5).
             "think": self._model.startswith("qwen3"),
-            "keep_alive": -1,
+            "keep_alive": self._keep_alive,
             "options": {"temperature": temperature},
         }
         if tools:

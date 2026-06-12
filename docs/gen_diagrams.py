@@ -230,7 +230,7 @@ ty = 0.855
 node(0.045, ty, 0.185, 0.062, "Browser", "React + SSE · Unlock\n(ACCESS_TOKEN)", ec=GREEN)
 node(0.285, ty, 0.185, 0.062, "Cloudflare Tunnel", "cloudflared\nsuasalada.com.br", ec="#f59e0b")
 node(0.525, ty, 0.215, 0.062, "Gateway FastAPI :8100", "auth Bearer · rate limit/h\nPOST /chat → SSE", ec="#3a3a55")
-node(0.79, ty, 0.17, 0.062, "Ollama :11434", "MODEL (qwen)\nkeep_alive=-1 · serializa", ec="#7c3aed")
+node(0.79, ty, 0.17, 0.062, "Ollama :11434", "chat: MODEL (qwen)\nembed: nomic-embed-text", ec="#7c3aed")
 arrow(ax, 0.23, ty + 0.031, 0.285, ty + 0.031, color=MUT)
 arrow(ax, 0.47, ty + 0.031, 0.525, ty + 0.031, color=MUT)
 arrow(ax, 0.74, ty + 0.031, 0.79, ty + 0.031, color="#7c3aed")
@@ -240,7 +240,11 @@ ax.text(0.875, ty - 0.012, "usado por classify · agentes · synthesize",
 # ---- fluxo vertical (LangGraph) ----
 cx, nw, nh = 0.5, 0.26, 0.062
 node(cx - nw / 2, 0.745, nw, nh, "sanitize", "normaliza e neutraliza injeção\nde markup/controle", ec=GREEN)
-node(cx - nw / 2, 0.635, nw, nh, "classify", "LLM roteador → RoutePlan\nretry → fallback léxico", ec=GREEN)
+node(cx - nw / 2, 0.635, nw, nh, "classify", "semântico (Qdrant kNN) → LLM\n→ léxico · guards determinísticos", ec=GREEN)
+# Qdrant — banco vetorial do semantic router (à esquerda do classify)
+node(0.045, 0.635, 0.205, nh, "Qdrant :6333", "routing_examples\ngolden set indexado (cosine)", ec="#22d3ee")
+arrow(ax, 0.25, 0.666, cx - nw / 2, 0.666, color="#22d3ee")
+ax.text(0.31, 0.676, "kNN ≥ 0.92 + consenso", color="#22d3ee", fontsize=7)
 node(cx - nw / 2, 0.525, nw, nh, "dispatch", "fan-out paralelo por domínio\nThreadPoolExecutor", ec=BLUE)
 arrow(ax, 0.6325, ty, cx, 0.807, color=MUT)
 arrow(ax, cx, 0.745, cx, 0.697, color=GREEN)
@@ -289,4 +293,79 @@ ax.text(0.5, 0.005, "Segurança: sanitize anti-injeção · classifier ignora co
 
 fig.savefig(f"{DOCS}/architecture-flow.png", facecolor=BG, bbox_inches="tight")
 plt.close(fig)
-print("ok: 6 imagens geradas em docs/")
+
+# ----------------------------------------------------------------------------
+# 4) LangGraph StateGraph (grafo do gateway)
+# ----------------------------------------------------------------------------
+fig, ax = base_ax((13, 8.5))
+ax.text(0.5, 0.965, "AI-Orchestrator — LangGraph StateGraph (gateway/graph.py)",
+        color=TXT, fontsize=17, fontweight="bold", ha="center")
+ax.text(0.5, 0.93, "POST /chat  →  SSE: route · agent · final", color=MUT,
+        fontsize=10.5, ha="center")
+
+
+def gnode(x, y, w, h, title, lines, ec=BORDER, tc=TXT):
+    box(ax, x, y, w, h, fc=PANEL, ec=ec, lw=1.5)
+    ax.text(x + w / 2, y + h - 0.018, title, color=tc, fontsize=12,
+            fontweight="bold", ha="center", va="top")
+    ax.text(x + w / 2, y + h - 0.062, "\n".join(lines), color=MUT, fontsize=8.6,
+            ha="center", va="top", linespacing=1.6)
+
+
+ax.scatter([0.06], [0.79], s=420, color=GREEN, zorder=4)
+ax.text(0.06, 0.745, "START", color=GREEN, fontsize=10, fontweight="bold", ha="center")
+
+gnode(0.13, 0.73, 0.20, 0.12, "sanitize",
+      ["normaliza input, remove", "padrões de prompt-injection"], ec=BORDER)
+gnode(0.38, 0.70, 0.23, 0.15, "classify",
+      ["semântico (Qdrant kNN ≥ 0.92)", "→ LLM → léxico · guards", "→ RoutePlan {domains, plan}"], ec=BORDER)
+ax.text(0.495, 0.675, "emite evento SSE “route”", color=MUT, fontsize=8.6,
+        ha="center", style="italic")
+
+arrow(ax, 0.08, 0.79, 0.13, 0.79, color=GREEN)
+arrow(ax, 0.33, 0.79, 0.38, 0.79, color=MUT)
+
+# Qdrant — banco vetorial consultado pela camada semântica do classify
+gnode(0.06, 0.50, 0.24, 0.115, "Qdrant :6333",
+      ["collection routing_examples", "golden set indexado (cosine, 768d)"], ec="#22d3ee", tc="#22d3ee")
+arrow(ax, 0.21, 0.615, 0.40, 0.70, color="#22d3ee")
+ax.text(0.255, 0.672, "kNN + consenso unânime", color="#22d3ee", fontsize=8,
+        ha="center", style="italic")
+
+gnode(0.69, 0.745, 0.27, 0.14, "respond_clarification",
+      ["pergunta ambígua →", "devolve pedido de esclarecimento", "(final_answer direto)"], ec=AMBER, tc=AMBER)
+arrow(ax, 0.61, 0.81, 0.69, 0.825, color=AMBER)
+ax.text(0.645, 0.845, "sim\nclarification?", color=AMBER, fontsize=8.6,
+        ha="center", style="italic")
+ax.scatter([0.95], [0.69], s=420, color=RED, zorder=4)
+ax.text(0.95, 0.645, "END", color=RED, fontsize=10, fontweight="bold", ha="center")
+arrow(ax, 0.88, 0.745, 0.945, 0.70, color=AMBER)
+
+gnode(0.38, 0.44, 0.23, 0.145, "dispatch",
+      ["fan-out paralelo", "ThreadPoolExecutor", "(max_workers = nº domínios)"], ec=BORDER)
+ax.text(0.495, 0.415, "emite “agent” por domínio", color=MUT, fontsize=8.6,
+        ha="center", style="italic")
+arrow(ax, 0.495, 0.665, 0.495, 0.585, color=MUT)
+ax.text(0.51, 0.635, "não → dispatch", color=MUT, fontsize=8.8, style="italic")
+
+agents = [("agente finanças", "8101"), ("agente rh", "8102"),
+          ("agente estoque", "8103"), ("agente vendas", "8104")]
+for i, (nm, p) in enumerate(agents):
+    y = 0.50 - i * 0.125
+    gnode(0.69, y, 0.27, 0.105, nm,
+          [f"tool-loop LLM ↔ microserviço :{p}", "(OpenAPI via registry, X-Internal-Key)"],
+          ec="#3b5bb5", tc=BLUE)
+    arrow(ax, 0.61, 0.51, 0.69, y + 0.052, color=BLUE, lw=1.1)
+    arrow(ax, 0.69, y + 0.03, 0.55, 0.225, color=BLUE, lw=0.8, style="-|>")
+
+gnode(0.38, 0.13, 0.23, 0.115, "synthesize",
+      ["LLM consolida respostas", "dos agentes → final_answer"], ec=BORDER)
+ax.text(0.62, 0.085, "emite evento SSE “final”", color=MUT, fontsize=8.6,
+        ha="left", style="italic")
+ax.scatter([0.495], [0.045], s=420, color=RED, zorder=4)
+ax.text(0.535, 0.04, "END", color=RED, fontsize=10, fontweight="bold", ha="left")
+arrow(ax, 0.495, 0.105, 0.495, 0.062, color=MUT)
+
+fig.savefig(f"{DOCS}/langgraph-flow.png", facecolor=BG, bbox_inches="tight")
+plt.close(fig)
+print("ok: 7 imagens geradas em docs/")

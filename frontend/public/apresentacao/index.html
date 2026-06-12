@@ -223,7 +223,7 @@
     sem nenhum token saindo do perímetro da empresa.
   </p>
   <div class="hero-meta">
-    <div><span class="k">Orquestração</span><span class="v">LangGraph · StateGraph</span></div>
+    <div><span class="k">Orquestração</span><span class="v">LangGraph · Qdrant (rota semântica)</span></div>
     <div><span class="k">Inferência</span><span class="v">Ollama · Qwen (local, GPU)</span></div>
     <div><span class="k">Domínios</span><span class="v">Finanças · RH · Estoque · Vendas</span></div>
     <div><span class="k">Custo por consulta</span><span class="v" style="color:var(--green)">R$ 0 em API</span></div>
@@ -263,7 +263,7 @@
   → microserviços com as regras → síntese. Progresso transmitido por SSE em tempo real
   (<code>route</code> · <code>agent</code> · <code>final</code>).</p>
   <figure>
-    <img src="architecture-flow.png" alt="Fluxo completo do AI-Orchestrator">
+    <img src="architecture-flow.png?v=20260611" alt="Fluxo completo do AI-Orchestrator">
     <figcaption>Arquitetura end-to-end em produção. Inferência local via Ollama — nenhum dado sai do perímetro.</figcaption>
   </figure>
 </section>
@@ -273,11 +273,12 @@
   <span class="num">04 / 10</span>
   <div class="kicker">Orquestração</div>
   <h2>LangGraph: 5 nós, decisões explícitas</h2>
-  <p class="sub">Sanitização anti-injeção → classificação com retry e fallback léxico determinístico →
-  fan-out paralelo (ThreadPoolExecutor) → síntese. Fora de escopo? O grafo pede esclarecimento
-  em vez de alucinar.</p>
+  <p class="sub">Sanitização anti-injeção → classificação em três camadas (semântica via Qdrant kNN,
+  LLM com retry, fallback léxico determinístico) → fan-out paralelo (ThreadPoolExecutor) → síntese.
+  Pergunta já conhecida resolve em ~0,1&nbsp;s por similaridade vetorial, sem chamar o LLM.
+  Fora de escopo? O grafo pede esclarecimento em vez de alucinar.</p>
   <figure>
-    <img src="langgraph-flow.png" alt="Grafo LangGraph do gateway">
+    <img src="langgraph-flow.png?v=20260611" alt="Grafo LangGraph do gateway">
     <figcaption>StateGraph do gateway (gateway/graph.py) — cada transição é observável e testada.</figcaption>
   </figure>
 </section>
@@ -291,7 +292,7 @@
   (alçadas, CLT, reposição, descontos). O LLM consulta e executa; quem valida é o serviço.
   Erro 422 volta estruturado com a regra violada e reentra no loop do agente.</p>
   <figure>
-    <img src="microservices.png" alt="Mapa dos microserviços de domínio">
+    <img src="microservices.png?v=20260611" alt="Mapa dos microserviços de domínio">
     <figcaption>Gateway descobre as capacidades de cada serviço via OpenAPI — adicionar um domínio novo não muda o orquestrador.</figcaption>
   </figure>
 </section>
@@ -305,10 +306,10 @@
   Loop limitado (≤ 6 iterações + deadline) e toda afirmação numérica obrigatoriamente
   rastreável a uma chamada de tool.</p>
   <div class="grid2">
-    <figure style="margin-top:0"><img src="agent-financas.png" alt="Agente Finanças"></figure>
-    <figure style="margin-top:0"><img src="agent-rh.png" alt="Agente RH"></figure>
-    <figure style="margin-top:0"><img src="agent-estoque.png" alt="Agente Estoque"></figure>
-    <figure style="margin-top:0"><img src="agent-vendas.png" alt="Agente Vendas"></figure>
+    <figure style="margin-top:0"><img src="agent-financas.png?v=20260611" alt="Agente Finanças"></figure>
+    <figure style="margin-top:0"><img src="agent-rh.png?v=20260611" alt="Agente RH"></figure>
+    <figure style="margin-top:0"><img src="agent-estoque.png?v=20260611" alt="Agente Estoque"></figure>
+    <figure style="margin-top:0"><img src="agent-vendas.png?v=20260611" alt="Agente Vendas"></figure>
   </div>
 </section>
 
@@ -357,6 +358,8 @@
     <span class="pill">LangGraph</span>
     <span class="pill">Ollama</span>
     <span class="pill">Qwen (2.5 7B / 3 30B-A3B)</span>
+    <span class="pill">Qdrant (busca vetorial)</span>
+    <span class="pill">nomic-embed-text</span>
     <span class="pill">SQLite</span>
     <span class="pill">React + Vite</span>
     <span class="pill">SSE</span>

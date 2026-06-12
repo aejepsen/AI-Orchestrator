@@ -31,7 +31,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
       # Modelo do grafo (classificador/agentes/síntese). Na RTX 3060 (12 GB) o
       # 30b-a3b transborda 44% pra CPU — latência alta; 7b roda 100% na GPU.
-      - MODEL=${MODEL:-qwen3:30b-a3b}
+      - MODEL=${MODEL:-qwen2.5:7b-instruct-q4_K_M}
       - SERVICE_URL_FINANCAS=http://financas:8000
       - SERVICE_URL_RH=http://rh:8000
       - SERVICE_URL_ESTOQUE=http://estoque:8000
@@ -43,14 +43,36 @@ services:
       # Fan-out 3 domínios enfileira no MoE único (Ollama serializa): o 3º agente
       # espera ~2 loops inteiros antes de começar — 300 s estourava (medido na demo).
       - LLM_TIMEOUT_S=900
+      # Semantic router: golden set indexado no Qdrant, embeddings locais.
+      - QDRANT_URL=http://qdrant:6333
+      - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
+      - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-1}
+      - SEMANTIC_THRESHOLD=${SEMANTIC_THRESHOLD:-0.92}
     depends_on:
       - ollama
+      - qdrant
       - financas
       - rh
       - estoque
       - vendas
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Banco vetorial do semantic router (collection routing_examples).
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai-orchestrator-qdrant
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # Imagem não tem curl/wget; checagem TCP via bash builtin.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/6333' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 10s
@@ -148,6 +170,7 @@ services:
 
 volumes:
   ollama_data:
+  qdrant_data:
   financas_data:
   rh_data:
   estoque_data:

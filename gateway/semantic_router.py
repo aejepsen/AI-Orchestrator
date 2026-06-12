@@ -1,0 +1,153 @@
+"""Camada de roteamento semântico: golden set indexado no Qdrant.
+
+Primeira camada do pipeline de classificação (antes do LLM): a pergunta é
+embedada localmente (Ollama, modelo dedicado) e comparada por cosseno com os
+exemplos rotulados do golden de roteamento. Aceite exige consenso: top-1 acima
+do threshold E unanimidade dos vizinhos confiantes no conjunto
+de domínios. Qualquer dúvida → None → o LLM classifier decide.
+
+Falha de infraestrutura (Qdrant fora, embedding indisponível) nunca derruba a
+request: loga warning e devolve None (degradação graceful para o LLM).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from pathlib import Path
+
+import httpx
+
+from gateway.llm import LLMError, OllamaClient
+from gateway.router import RoutePlan
+
+logger = logging.getLogger(__name__)
+
+COLLECTION = "routing_examples"
+_EMBED_DIM = 768  # nomic-embed-text
+
+
+def _point_id(question: str) -> str:
+    """ID determinístico (UUID derivado do hash) — upsert idempotente."""
+    digest = hashlib.sha256(question.encode("utf-8")).hexdigest()
+    return f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
+
+
+class SemanticRouter:
+    """Busca kNN no Qdrant sobre o golden de roteamento."""
+
+    def __init__(
+        self,
+        qdrant_url: str,
+        llm: OllamaClient,
+        *,
+        embed_model: str,
+        examples_path: str,
+        threshold: float = 0.80,
+        top_k: int = 5,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._qdrant_url = qdrant_url.rstrip("/")
+        self._llm = llm
+        self._embed_model = embed_model
+        self._examples_path = examples_path
+        self._threshold = threshold
+        self._top_k = top_k
+        self._client = client or httpx.Client(timeout=10.0)
+        self._ready = False
+
+    # -- infraestrutura (lazy, idempotente) -----------------------------------
+
+    def ensure_ready(self) -> None:
+        """Cria a collection e indexa o golden set. Lazy: roda uma vez por processo."""
+        if self._ready:
+            return
+        self._ensure_collection()
+        self._seed_from_golden()
+        self._ready = True
+
+    def _ensure_collection(self) -> None:
+        response = self._client.get(f"{self._qdrant_url}/collections/{COLLECTION}")
+        if response.status_code == 200:
+            return
+        response = self._client.put(
+            f"{self._qdrant_url}/collections/{COLLECTION}",
+            json={"vectors": {"size": _EMBED_DIM, "distance": "Cosine"}},
+        )
+        response.raise_for_status()
+
+    def _seed_from_golden(self) -> None:
+        path = Path(self._examples_path)
+        if not path.exists():
+            logger.warning("semantic_router: golden ausente em %s — índice vazio", path)
+            return
+        records = [
+            record
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+            for record in [json.loads(line)]
+            if not record.get("expect_clarification") and record.get("expect_domains")
+        ]
+        if not records:
+            return
+        vectors = self._llm.embed([r["question"] for r in records], model=self._embed_model)
+        points = [
+            {
+                "id": _point_id(record["question"]),
+                "vector": vector,
+                "payload": {"question": record["question"], "domains": record["expect_domains"]},
+            }
+            for record, vector in zip(records, vectors)
+        ]
+        response = self._client.put(
+            f"{self._qdrant_url}/collections/{COLLECTION}/points?wait=true",
+            json={"points": points},
+        )
+        response.raise_for_status()
+        logger.info("semantic_router: %d exemplos indexados em %s", len(points), COLLECTION)
+
+    # -- roteamento ------------------------------------------------------------
+
+    def route(self, question: str, *, exclude_question: str | None = None) -> RoutePlan | None:
+        """Rota por similaridade ou None (sem consenso/infra fora → LLM decide).
+
+        `exclude_question` remove um exemplo do resultado — usado pelo eval
+        em leave-one-out para não casar consigo mesmo.
+        """
+        try:
+            self.ensure_ready()
+            vector = self._llm.embed([question], model=self._embed_model)[0]
+            body: dict = {"vector": vector, "limit": self._top_k + 1, "with_payload": True}
+            response = self._client.post(
+                f"{self._qdrant_url}/collections/{COLLECTION}/points/search", json=body
+            )
+            response.raise_for_status()
+            hits = response.json().get("result", [])
+        except (httpx.HTTPError, LLMError, KeyError, ValueError) as exc:
+            logger.warning("semantic_router indisponível (%s) — fallback para LLM", exc)
+            return None
+
+        if exclude_question is not None:
+            excluded = _point_id(exclude_question)
+            hits = [h for h in hits if h.get("id") != excluded]
+        hits = hits[: self._top_k]
+
+        confident = [h for h in hits if h.get("score", 0.0) >= self._threshold]
+        if not confident or confident[0] is not hits[0]:
+            return None
+        # Consenso unânime: calibração leave-one-out mostrou que na banda 0.80–0.90
+        # vizinhos confiantes com labels conflitantes erram o conjunto de domínios.
+        # A camada semântica age como cache de perguntas quase idênticas; ambiguidade
+        # cai para o LLM classifier.
+        top_domains = tuple(hits[0]["payload"]["domains"])
+        if any(tuple(h["payload"]["domains"]) != top_domains for h in confident):
+            return None
+
+        score = hits[0]["score"]
+        nearest = hits[0]["payload"]["question"]
+        return RoutePlan(
+            domains=list(top_domains),  # type: ignore[arg-type]
+            plan=f'Roteado por similaridade semântica (score {score:.2f}) com "{nearest}".',
+            clarification=None,
+        )

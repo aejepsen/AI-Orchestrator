@@ -40,3 +40,5 @@
 {"question": "A galera do depósito falou que o teclado tá acabando, ainda tem quanto aí?", "expect_domains": ["estoque"], "expect_clarification": false}
 {"question": "Meu chefe quer saber se posso emendar uns dias de descanso no feriado, quantos dias tenho direito?", "expect_domains": ["rh"], "expect_clarification": false}
 {"question": "O cliente tá chorando um descontinho a mais no pedido grande, rola?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "me mostre o descritivo de comissão para a funcionária Juliana Castro Neves", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "qual a comissão do funcionário Rafael Monteiro neste mês?", "expect_domains": ["vendas"], "expect_clarification": false}

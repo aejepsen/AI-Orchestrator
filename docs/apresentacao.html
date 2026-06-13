@@ -357,7 +357,7 @@
     <span class="pill">Python · FastAPI</span>
     <span class="pill">LangGraph</span>
     <span class="pill">Ollama</span>
-    <span class="pill">Qwen (2.5 7B / 3 30B-A3B)</span>
+    <span class="pill">Qwen 3.5-9B LoRA (fine-tuned)</span>
     <span class="pill">Qdrant (busca vetorial)</span>
     <span class="pill">nomic-embed-text</span>
     <span class="pill">SQLite</span>
@@ -374,9 +374,9 @@
       regressão de comportamento do LLM é detectada como bug, não como surpresa.</p>
     </div>
     <div class="card accent-blue">
-      <h3>Modelo configurável</h3>
-      <p>Variável <code>MODEL</code> troca o modelo sem código: 7B (latência, 100% GPU)
-      ou MoE 30B (qualidade). Mesmo grafo, mesmo contrato.</p>
+      <h3>Modelo configurável + LoRA</h3>
+      <p>Variável <code>MODEL</code> troca o modelo sem código. Produção: <strong>Qwen 3.5-9B LoRA</strong>
+      (fine-tuned em 3.050 exemplos, 100% GPU, ~2–4 s/task). Mesmo grafo, mesmo contrato.</p>
     </div>
     <div class="card accent-blue">
       <h3>Extensível por OpenAPI</h3>

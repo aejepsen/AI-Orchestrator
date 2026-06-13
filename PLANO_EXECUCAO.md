@@ -120,3 +120,18 @@ AI-Orchestrator/
 - [x] Injection test: 0 vazamentos cross-domain (0/6 após endurecimento do router)
 - [x] Latências medidas e documentadas por etapa (tabela no README)
 - [x] `docker compose up` sobe tudo do zero (6 containers; só falta `ollama pull` na 1ª vez)
+
+---
+
+## 5. Evolução pós-PoC: LoRA Qwen3.5-9B (2026-06-11/13)
+
+Após PoC completa, fine-tune LoRA do Qwen3.5-9B especializado em tool-calling + routing do orquestrador. Plano e resultados completos em `docs/PLANO_LORA_9B.md`.
+
+| Eval | LoRA 9B (prod) | Baseline 9B | Baseline 7b | MoE 30B |
+|---|---|---|---|---|
+| Routing (44 perguntas) | **90.9%** | 95.5% | 90.5% | 90.5% |
+| Injection (6 casos) | **0/6** | 0/6 | 0/6 | 0/6 |
+| Domains (40 tasks) | **87.5%** (90/90/90/80) | 87.5% (90/80/80/100) | 82.5% | 95% |
+| Latência por task | **~2–4 s** (100% GPU) | — | ~7 s | ~55 s |
+
+**Decisão:** LoRA 9B promovido a modelo de produção (`.env MODEL=qwen3.5-9b-orch`). Domains +5 pp vs 7b, routing dentro do gate, latência 5–7x menor que MoE 30B. Trade-off aceito: routing -4.6 pp vs baseline 9B (casos coloquiais), compensado pela latência e pelo fato de caber 100% em GPU.

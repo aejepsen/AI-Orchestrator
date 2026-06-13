@@ -157,6 +157,16 @@ Camada kNN na frente do router LLM: robustez a paráfrase + latência menor em r
 - **Eval com leave-one-out**: ao avaliar pergunta do golden, excluir o próprio ponto do índice — senão o acerto é self-match trivial. Relatório registra camada usada (semantic/llm/lexical) + latência por camada.
 - **Lição medida (caso real)**: threshold 0.92 + consenso restritivo → 0 acionamentos; LLM resolvia em 1.6s. Camada semântica só compensa se o LLM de routing for lento ou caro — **meça antes de tunar o threshold**, e aceite desligar a camada se o baseline já é bom.
 
+## Fase 6.6 — Estado, HITL e observabilidade (obrigatório em produção real)
+
+Itens que PoC dispensa mas produto não:
+
+- **Estado conversacional**: multi-turn exige checkpointer (LangGraph checkpointer → SQLite/Postgres/Redis). Janela de história com teto de tokens + sumarização do excedente — história infinita = custo infinito e contexto estourado.
+- **Human-in-the-loop**: toda ação destrutiva/irreversível executada por agente (deletar, pagar, enviar) passa por interrupt + aprovação humana. Whitelist de tools auto-executáveis; o resto pausa o grafo.
+- **Observabilidade LLM dedicada** (além de logs): tracing de prompt/response/tokens/custo por request — Langfuse (self-hosted, open source, default zero-cloud) ou OpenTelemetry GenAI. Sem isso, debugar "por que o agente fez X" em produção é arqueologia.
+- **Structured output**: JSON crítico (router) com schema enforcement nativo do serving (format/json_schema no Ollama, guided_json no vLLM, tool-use forçado em API) — não regex sobre texto livre. Parse + retry é fallback, não estratégia.
+- **Custo por request como métrica de produto**: tokens in/out por nó do grafo, agregado por usuário/dia. Em API isso é fatura; em local é capacidade.
+
 ## Fase 7 (opcional) — Fine-tune por destilação (LoRA)
 
 Só após baseline medido. Critério de adoção definido **antes** de treinar: superar baseline sem regressão em nenhum gate; empate = mantém base.
@@ -168,16 +178,6 @@ Só após baseline medido. Critério de adoção definido **antes** de treinar: 
 - **Checkpoints SEMPRE no armazenamento persistente (Drive/S3/NFS), NUNCA só em `/content` ou disco efêmero.** Sessões Colab caem sem aviso (timeout, desconexão, OOM, crash CUDA). Se `output_dir` aponta pra disco local, um reset de sessão apaga horas de treino irrecuperáveis (incidente real: 2h17 de treino perdidas por checkpoint só em `/content/outputs`). Regra: `output_dir` do SFTConfig aponta direto pro Drive montado (ex.: `/content/drive/MyDrive/<projeto>/training`); backup incremental do progresso. Disco local é cache, não storage.
 - Gotchas de ambiente Colab/remoto: instalador do Ollama exige `zstd`; `num_ctx` explícito anti-OOM; pinned versions de transformers/TRL no notebook; sanity check do modelo antes do run longo; torchao incompatível com torch do Colab — se import falhar, patch `importlib.util.find_spec` pra retornar None pro torchao e usar transformers+peft direto.
 - Validação final: o GGUF/adapter passa pelos **mesmos 3 gates** (routing/injection/domains) do baseline. O eval decide, não a loss.
-
-## Fase 6.7 — Estado, HITL e observabilidade (obrigatório em produção real)
-
-Itens que PoC dispensa mas produto não:
-
-- **Estado conversacional**: multi-turn exige checkpointer (LangGraph checkpointer → SQLite/Postgres/Redis). Janela de história com teto de tokens + sumarização do excedente — história infinita = custo infinito e contexto estourado.
-- **Human-in-the-loop**: toda ação destrutiva/irreversível executada por agente (deletar, pagar, enviar) passa por interrupt + aprovação humana. Whitelist de tools auto-executáveis; o resto pausa o grafo.
-- **Observabilidade LLM dedicada** (além de logs): tracing de prompt/response/tokens/custo por request — Langfuse (self-hosted, open source, default zero-cloud) ou OpenTelemetry GenAI. Sem isso, debugar "por que o agente fez X" em produção é arqueologia.
-- **Structured output**: JSON crítico (router) com schema enforcement nativo do serving (format/json_schema no Ollama, guided_json no vLLM, tool-use forçado em API) — não regex sobre texto livre. Parse + retry é fallback, não estratégia.
-- **Custo por request como métrica de produto**: tokens in/out por nó do grafo, agregado por usuário/dia. Em API isso é fatura; em local é capacidade.
 
 ## Ordem de construção (resumo executável)
 

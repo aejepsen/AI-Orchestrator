@@ -120,7 +120,7 @@ def health() -> Health:
 def list_employees(department: str | None = Query(default=None, description="Filtra por departamento")) -> list[Employee]:
     query, params = "SELECT * FROM employees", []
     if department is not None:
-        query += " WHERE department = ?"
+        query += " WHERE department = ? COLLATE NOCASE"
         params.append(department)
     with db.connect() as conn:
         return [_row_to_employee(r) for r in conn.execute(query + " ORDER BY name", params)]
@@ -241,7 +241,7 @@ def get_headcount(department: str | None = Query(default=None, description="Filt
     query = "SELECT department, COUNT(*) AS headcount FROM employees"
     params = []
     if department is not None:
-        query += " WHERE department = ?"
+        query += " WHERE department = ? COLLATE NOCASE"
         params.append(department)
     query += " GROUP BY department ORDER BY department"
     with db.connect() as conn:

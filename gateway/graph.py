@@ -130,7 +130,15 @@ class GatewayGraph:
         started = time.monotonic()
         trace: TraceHandle | None = getattr(self._local, "trace", None)
         span = trace.span(name="sanitize") if trace else None
-        update: GraphState = {"sanitized": sanitize_question(state["question"])}
+        # Limpa estado residual de turns anteriores (checkpointer mantém tudo).
+        update: GraphState = {
+            "sanitized": sanitize_question(state["question"]),
+            "final_answer": "",
+            "agent_results": {},
+            "route": {},
+            "error": None,
+            "pending_confirmation": None,
+        }
         if not state.get("trace_id"):
             update["trace_id"] = str(uuid.uuid4())
         _log_node({**state, **update}, "sanitize", started, domains=[])

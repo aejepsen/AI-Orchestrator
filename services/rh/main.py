@@ -34,6 +34,20 @@ register_internal_auth(app)
 ReimbursementCategory = Literal["viagem", "refeicao", "home_office"]
 
 
+class EmployeeCreate(BaseModel):
+    name: str = Field(min_length=2, description="Nome completo do funcionário")
+    department: str = Field(min_length=2, description="Departamento")
+    position: str = Field(min_length=2, description="Cargo")
+    hire_date: date = Field(description="Data de admissão (YYYY-MM-DD)")
+    salary: float = Field(gt=0, description="Salário em reais")
+
+
+class EmployeeUpdate(BaseModel):
+    department: str | None = Field(default=None, min_length=2, description="Novo departamento")
+    position: str | None = Field(default=None, min_length=2, description="Novo cargo")
+    salary: float | None = Field(default=None, gt=0, description="Novo salário em reais")
+
+
 class Employee(BaseModel):
     id: int
     name: str
@@ -130,6 +144,65 @@ def list_employees(department: str | None = Query(default=None, description="Fil
 def get_employee(employee_id: int) -> Employee:
     with db.connect() as conn:
         return _row_to_employee(_get_employee_row(conn, employee_id))
+
+
+@app.post(
+    "/employees",
+    operation_id="create_employee",
+    summary="Cria um novo funcionário",
+    description="Cadastra um funcionário com nome, departamento, cargo, data de admissão e salário.",
+    status_code=201,
+)
+def create_employee(body: EmployeeCreate) -> Employee:
+    with db.connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO employees (name, department, position, hire_date, salary) VALUES (?, ?, ?, ?, ?)",
+            (body.name, body.department, body.position, body.hire_date.isoformat(), body.salary),
+        )
+        conn.commit()
+        return _row_to_employee(_get_employee_row(conn, cur.lastrowid))
+
+
+@app.put(
+    "/employees/{employee_id}",
+    operation_id="update_employee",
+    summary="Atualiza um funcionário existente (department, position, salary)",
+    description="Atualiza campos opcionais de um funcionário. Retorna 404 se o funcionário não existe.",
+)
+def update_employee(employee_id: int, body: EmployeeUpdate) -> Employee:
+    with db.connect() as conn:
+        _get_employee_row(conn, employee_id)
+        fields, params = [], []
+        if body.department is not None:
+            fields.append("department = ?")
+            params.append(body.department)
+        if body.position is not None:
+            fields.append("position = ?")
+            params.append(body.position)
+        if body.salary is not None:
+            fields.append("salary = ?")
+            params.append(body.salary)
+        if not fields:
+            return _row_to_employee(_get_employee_row(conn, employee_id))
+        params.append(employee_id)
+        conn.execute(f"UPDATE employees SET {', '.join(fields)} WHERE id = ?", params)
+        conn.commit()
+        return _row_to_employee(_get_employee_row(conn, employee_id))
+
+
+@app.delete(
+    "/employees/{employee_id}",
+    operation_id="delete_employee",
+    summary="Exclui um funcionário",
+    description="Remove um funcionário do cadastro. Retorna 404 se o funcionário não existe.",
+    status_code=204,
+)
+def delete_employee(employee_id: int):
+    with db.connect() as conn:
+        _get_employee_row(conn, employee_id)
+        conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
+        conn.commit()
+    return None
 
 
 @app.get(

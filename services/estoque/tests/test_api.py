@@ -73,3 +73,96 @@ def test_replenishment_lists_low_stock_skus(client):
     assert items["MES-ELE-002"]["suggested_quantity"] == 16
     assert items["NTB-DEV-004"]["suggested_quantity"] == 12
     assert "CAD-ERG-001" not in items
+
+
+# ── POST /products ────────────────────────────────────────────────────────
+
+
+def test_create_product_happy_path(client):
+    resp = client.post("/products", json={
+        "sku": "NEW-SKU-001",
+        "name": "Produto Novo",
+        "category": "Teste",
+        "unit_price": 99.90,
+        "quantity": 50,
+        "reorder_point": 10,
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["sku"] == "NEW-SKU-001"
+    assert body["on_hand"] == 50
+    assert body["available"] == 50
+    assert body["reorder_point"] == 10
+
+
+def test_create_product_duplicate_sku_returns_422(client):
+    resp = client.post("/products", json={
+        "sku": "CAD-ERG-001",
+        "name": "Duplicado",
+        "quantity": 1,
+        "reorder_point": 0,
+    })
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "sku_already_exists"
+
+
+def test_create_product_missing_name_returns_422(client):
+    resp = client.post("/products", json={
+        "sku": "BAD-001",
+        "name": "",
+        "quantity": 1,
+        "reorder_point": 0,
+    })
+    assert resp.status_code == 422
+
+
+# ── PUT /products/{sku} ──────────────────────────────────────────────────
+
+
+def test_update_product_happy_path(client):
+    resp = client.put("/products/CAD-ERG-001", json={
+        "name": "Cadeira Renomeada",
+        "quantity": 100,
+        "reorder_point": 20,
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Cadeira Renomeada"
+    assert body["on_hand"] == 100
+    assert body["reorder_point"] == 20
+
+
+def test_update_product_partial(client):
+    resp = client.put("/products/CAD-ERG-001", json={"name": "Cadeira Parcial"})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Cadeira Parcial"
+    assert resp.json()["on_hand"] == 32  # original
+
+
+def test_update_product_not_found(client):
+    resp = client.put("/products/INEXISTENTE", json={"name": "Nada"})
+    assert resp.status_code == 404
+    assert resp.json()["error"] == "product_not_found"
+
+
+# ── DELETE /products/{sku} ───────────────────────────────────────────────
+
+
+def test_delete_product_happy_path(client):
+    # SUP-NTB-010 has no active reservations
+    resp = client.delete("/products/SUP-NTB-010")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == "SUP-NTB-010"
+    assert client.get("/products/SUP-NTB-010").status_code == 404
+
+
+def test_delete_product_with_active_reservations_returns_422(client):
+    # MON-27P-003 has active reservations from seed
+    resp = client.delete("/products/MON-27P-003")
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "product_has_active_reservations"
+
+
+def test_delete_product_not_found(client):
+    resp = client.delete("/products/INEXISTENTE")
+    assert resp.status_code == 404

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from common import NotFound, RuleViolation, register_error_handlers, register_internal_auth
+from sqlite3 import IntegrityError
 from estoque import db, rules, seed
 
 
@@ -29,6 +30,21 @@ app = FastAPI(
 )
 register_error_handlers(app)
 register_internal_auth(app)
+
+
+class ProductCreate(BaseModel):
+    sku: str = Field(min_length=1, description="SKU único do produto")
+    name: str = Field(min_length=1, description="Nome do produto")
+    category: str = Field(default="Geral", description="Categoria do produto")
+    unit_price: float = Field(default=0.01, gt=0, description="Preço unitário")
+    quantity: int = Field(ge=0, description="Quantidade física em estoque")
+    reorder_point: int = Field(ge=0, description="Ponto de reposição")
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, description="Nome do produto")
+    quantity: int | None = Field(default=None, ge=0, description="Quantidade física em estoque")
+    reorder_point: int | None = Field(default=None, ge=0, description="Ponto de reposição")
 
 
 class Product(BaseModel):
@@ -191,3 +207,69 @@ def get_replenishment() -> list[ReplenishmentItem]:
                     )
                 )
     return items
+
+
+@app.post(
+    "/products",
+    operation_id="create_product",
+    summary="Cria um novo produto no catálogo",
+    description="SKU deve ser único. Retorna 422 se o SKU já existir.",
+    status_code=201,
+)
+def create_product(body: ProductCreate) -> Product:
+    with db.connect() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO products (sku, name, category, unit_price, on_hand, reorder_point)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (body.sku, body.name, body.category, body.unit_price, body.quantity, body.reorder_point),
+            )
+            conn.commit()
+        except IntegrityError:
+            raise RuleViolation(
+                error="sku_already_exists",
+                detail=f"SKU '{body.sku}' já existe no catálogo. Escolha um SKU diferente.",
+                rule="SKU deve ser único",
+            )
+        return _row_to_product(conn, _get_product_row(conn, body.sku))
+
+
+@app.put(
+    "/products/{sku}",
+    operation_id="update_product",
+    summary="Atualiza nome, quantidade ou ponto de reposição de um produto",
+)
+def update_product(sku: str, body: ProductUpdate) -> Product:
+    with db.connect() as conn:
+        row = _get_product_row(conn, sku)
+        name = body.name if body.name is not None else row["name"]
+        on_hand = body.quantity if body.quantity is not None else row["on_hand"]
+        reorder_point = body.reorder_point if body.reorder_point is not None else row["reorder_point"]
+        conn.execute(
+            "UPDATE products SET name = ?, on_hand = ?, reorder_point = ? WHERE sku = ?",
+            (name, on_hand, reorder_point, sku),
+        )
+        conn.commit()
+        return _row_to_product(conn, _get_product_row(conn, sku))
+
+
+@app.delete(
+    "/products/{sku}",
+    operation_id="delete_product",
+    summary="Exclui um produto do catálogo",
+    description="Não permite excluir produto com reservas ativas.",
+)
+def delete_product(sku: str) -> dict:
+    with db.connect() as conn:
+        _get_product_row(conn, sku)
+        active = db.reserved_quantity(conn, sku)
+        if active > 0:
+            raise RuleViolation(
+                error="product_has_active_reservations",
+                detail=f"Produto '{sku}' possui {active} unidade(s) em reservas ativas. Libere as reservas antes de excluir.",
+                rule="não é permitido excluir produto com reservas ativas",
+            )
+        conn.execute("DELETE FROM reservations WHERE sku = ?", (sku,))
+        conn.execute("DELETE FROM products WHERE sku = ?", (sku,))
+        conn.commit()
+        return {"deleted": sku}

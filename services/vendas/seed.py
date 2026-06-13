@@ -5,6 +5,12 @@ from datetime import date, timedelta
 
 from vendas import rules
 
+# (name, region)
+_SELLERS = [
+    ("Rafael Monteiro", "Sudeste"),
+    ("Juliana Castro Neves", "Sul"),
+]
+
 # (customer, salesperson, role, discount_pct, days_ago, items=[(sku, quantity, unit_price)])
 _ORDERS = [
     ("Lojas Andrade S.A.", "Rafael Monteiro", "vendedor", 5.0, 2,
@@ -27,6 +33,8 @@ _ORDERS = [
 
 
 def seed(conn: sqlite3.Connection, today: date | None = None) -> None:
+    if conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0] == 0:
+        conn.executemany("INSERT INTO sellers (name, region) VALUES (?, ?)", _SELLERS)
     if conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0] > 0:
         return
     base = today or date.today()

@@ -7,7 +7,7 @@ from typing import AsyncIterator, Literal
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 
-from common import NotFound, register_error_handlers, register_internal_auth
+from common import NotFound, RuleViolation, register_error_handlers, register_internal_auth
 from financas import db, rules, seed
 
 
@@ -50,6 +50,12 @@ class Account(AccountCreate):
     id: int
     status: Literal["aberta", "paga", "recebida"]
     settled_date: date | None
+
+
+class AccountUpdate(BaseModel):
+    description: str | None = Field(default=None, min_length=3, description="Nova descrição da conta")
+    amount: float | None = Field(default=None, gt=0, description="Novo valor em reais")
+    due_date: date | None = Field(default=None, description="Nova data de vencimento (YYYY-MM-DD)")
 
 
 class SettleRequest(BaseModel):
@@ -154,6 +160,68 @@ def create_account(body: AccountCreate) -> Account:
         )
         conn.commit()
         return _row_to_account(_get_account_row(conn, cur.lastrowid))
+
+
+@app.put(
+    "/accounts/{account_id}",
+    operation_id="update_account",
+    summary="Atualiza uma conta existente (description, amount, due_date)",
+    description="Atualiza campos opcionais de uma conta aberta. Contas já liquidadas não podem ser alteradas.",
+)
+def update_account(account_id: int, body: AccountUpdate) -> Account:
+    with db.connect() as conn:
+        row = _get_account_row(conn, account_id)
+        if row["status"] != "aberta":
+            raise RuleViolation(
+                error="account_already_settled",
+                detail=(
+                    f"Conta com id {account_id} está com status '{row['status']}' e não pode ser alterada. "
+                    f"Apenas contas com status 'aberta' aceitam edição."
+                ),
+                rule="só contas abertas podem ser editadas",
+            )
+        fields, params = [], []
+        if body.description is not None:
+            fields.append("description = ?")
+            params.append(body.description)
+        if body.amount is not None:
+            if row["type"] == "pagar":
+                rules.validate_expense_approval(body.amount, row["approver_role"])
+            fields.append("amount = ?")
+            params.append(body.amount)
+        if body.due_date is not None:
+            fields.append("due_date = ?")
+            params.append(body.due_date.isoformat())
+        if not fields:
+            return _row_to_account(row)
+        params.append(account_id)
+        conn.execute(f"UPDATE accounts SET {', '.join(fields)} WHERE id = ?", params)
+        conn.commit()
+        return _row_to_account(_get_account_row(conn, account_id))
+
+
+@app.delete(
+    "/accounts/{account_id}",
+    operation_id="delete_account",
+    summary="Exclui uma conta existente",
+    description="Exclui uma conta aberta. Contas já liquidadas não podem ser excluídas.",
+    status_code=204,
+)
+def delete_account(account_id: int):
+    with db.connect() as conn:
+        row = _get_account_row(conn, account_id)
+        if row["status"] != "aberta":
+            raise RuleViolation(
+                error="account_already_settled",
+                detail=(
+                    f"Conta com id {account_id} está com status '{row['status']}' e não pode ser excluída. "
+                    f"Apenas contas com status 'aberta' aceitam exclusão."
+                ),
+                rule="só contas abertas podem ser excluídas",
+            )
+        conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        conn.commit()
+    return None
 
 
 def _settle(account_id: int, action: Literal["pay", "receive"], body: SettleRequest | None) -> Account:

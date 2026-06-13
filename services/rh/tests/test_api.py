@@ -33,6 +33,99 @@ def test_get_employee_not_found(client):
     assert resp.json()["error"] == "employee_not_found"
 
 
+def test_create_employee_happy_path(client):
+    resp = client.post(
+        "/employees",
+        json={
+            "name": "João da Silva",
+            "department": "Engenharia",
+            "position": "Engenheiro de Software Pleno",
+            "hire_date": "2026-06-01",
+            "salary": 11_000.00,
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "João da Silva"
+    assert body["salary"] == 11_000.00
+    assert "id" in body
+
+
+def test_create_employee_missing_name_returns_422(client):
+    resp = client.post(
+        "/employees",
+        json={
+            "department": "Vendas",
+            "position": "Executivo",
+            "hire_date": "2026-06-01",
+            "salary": 8_000.00,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_create_employee_invalid_salary_returns_422(client):
+    resp = client.post(
+        "/employees",
+        json={
+            "name": "Maria Teste",
+            "department": "RH",
+            "position": "Analista",
+            "hire_date": "2026-06-01",
+            "salary": -100.00,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_update_employee_happy_path(client):
+    employees = client.get("/employees").json()
+    emp_id = employees[0]["id"]
+    resp = client.put(
+        f"/employees/{emp_id}",
+        json={"department": "Produto", "position": "Product Manager", "salary": 20_000.00},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["department"] == "Produto"
+    assert body["position"] == "Product Manager"
+    assert body["salary"] == 20_000.00
+
+
+def test_update_employee_not_found(client):
+    resp = client.put("/employees/9999", json={"department": "Nada"})
+    assert resp.status_code == 404
+
+
+def test_update_employee_no_fields_returns_unchanged(client):
+    employees = client.get("/employees").json()
+    emp = employees[0]
+    resp = client.put(f"/employees/{emp['id']}", json={})
+    assert resp.status_code == 200
+    assert resp.json()["department"] == emp["department"]
+
+
+def test_delete_employee_happy_path(client):
+    created = client.post(
+        "/employees",
+        json={
+            "name": "Temporário Teste",
+            "department": "Operações",
+            "position": "Estagiário",
+            "hire_date": "2026-06-01",
+            "salary": 2_000.00,
+        },
+    ).json()
+    resp = client.delete(f"/employees/{created['id']}")
+    assert resp.status_code == 204
+    assert client.get(f"/employees/{created['id']}").status_code == 404
+
+
+def test_delete_employee_not_found(client):
+    resp = client.delete("/employees/9999")
+    assert resp.status_code == 404
+
+
 def test_headcount_by_department(client):
     rows = client.get("/headcount", params={"department": "Engenharia"}).json()
     assert rows == [{"department": "Engenharia", "headcount": 4}]

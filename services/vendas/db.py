@@ -7,6 +7,12 @@ from pathlib import Path
 _DEFAULT_PATH = "./vendas.db"
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS sellers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    region TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     customer TEXT NOT NULL,
@@ -15,12 +21,13 @@ CREATE TABLE IF NOT EXISTS orders (
     discount_pct REAL NOT NULL DEFAULT 0 CHECK (discount_pct >= 0),
     order_date TEXT NOT NULL,
     gross_total REAL NOT NULL,
-    net_total REAL NOT NULL
+    net_total REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'concluido', 'cancelado'))
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL REFERENCES orders(id),
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     sku TEXT NOT NULL,
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price REAL NOT NULL CHECK (unit_price > 0)

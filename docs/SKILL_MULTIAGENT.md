@@ -165,7 +165,8 @@ Só após baseline medido. Critério de adoção definido **antes** de treinar: 
 - **Filtro automático + `rejected.jsonl` auditável**: rejeitar trajetória sem tool call, com alucinação numérica (números da resposta devem existir nos tool results), tool/status errado. Taxa de rejeição ~3–8% é saudável; 0% = filtro quebrado.
 - **Anti-contaminação**: golden sets 100% fora do treino. Split train/val com seed fixo.
 - **Comunicação de progresso**: contador de estágio explícito no log (`[trajectories] 90/1431`), nunca um "3000/3000" ambíguo de estágio intermediário que pareça fim de pipeline (incidente real: sessão encerrada prematuramente por isso). Backup incremental do progresso a cada 1–2h.
-- Gotchas de ambiente Colab/remoto: instalador do Ollama exige `zstd`; `num_ctx` explícito anti-OOM; pinned versions de transformers/TRL no notebook; sanity check do modelo antes do run longo.
+- **Checkpoints SEMPRE no armazenamento persistente (Drive/S3/NFS), NUNCA só em `/content` ou disco efêmero.** Sessões Colab caem sem aviso (timeout, desconexão, OOM, crash CUDA). Se `output_dir` aponta pra disco local, um reset de sessão apaga horas de treino irrecuperáveis (incidente real: 2h17 de treino perdidas por checkpoint só em `/content/outputs`). Regra: `output_dir` do SFTConfig aponta direto pro Drive montado (ex.: `/content/drive/MyDrive/<projeto>/training`); backup incremental do progresso. Disco local é cache, não storage.
+- Gotchas de ambiente Colab/remoto: instalador do Ollama exige `zstd`; `num_ctx` explícito anti-OOM; pinned versions de transformers/TRL no notebook; sanity check do modelo antes do run longo; torchao incompatível com torch do Colab — se import falhar, patch `importlib.util.find_spec` pra retornar None pro torchao e usar transformers+peft direto.
 - Validação final: o GGUF/adapter passa pelos **mesmos 3 gates** (routing/injection/domains) do baseline. O eval decide, não a loss.
 
 ## Fase 6.7 — Estado, HITL e observabilidade (obrigatório em produção real)
@@ -200,3 +201,4 @@ Cada fase tem critério numérico de saída. Não avance com gate vermelho.
 - Erro de API genérico ("invalid request") que o agente não consegue interpretar.
 - Multi-modelo em GPU única sem medir swap.
 - Pipeline longo de geração sem retomada nem backup incremental.
+- Checkpoints de treino em disco efêmero (Colab `/content`, `/tmp`) sem cópia em storage persistente.

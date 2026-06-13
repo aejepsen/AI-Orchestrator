@@ -1,0 +1,675 @@
+{
+  "timestamp": "2026-06-13T03:54:02.053241",
+  "model": "qwen3.5-9b-orch",
+  "semantic": false,
+  "layer_counts": {
+    "semantic": 0,
+    "llm": 44,
+    "lexical": 0
+  },
+  "total": 44,
+  "hits": 40,
+  "accuracy": 0.9091,
+  "gate": 0.9,
+  "passed": true,
+  "items": [
+    {
+      "question": "Quais contas a pagar vencem esta semana?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar contas a pagar vencidas esta semana no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 1.25,
+      "ok": true
+    },
+    {
+      "question": "Qual é a projeção de fluxo de caixa para os próximos 30 dias?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar projeção de fluxo de caixa para os próximos 30 dias no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 1.06,
+      "ok": true
+    },
+    {
+      "question": "Quem precisa aprovar um pagamento de R$ 80.000?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar a alçada de aprovação para pagamento de R$ 80.000 no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 1.15,
+      "ok": true
+    },
+    {
+      "question": "Quanto temos de contas a receber em aberto?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o valor total das contas a receber em aberto no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 0.99,
+      "ok": true
+    },
+    {
+      "question": "Registre uma despesa de R$ 1.200 com manutenção predial.",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Registrar a despesa de manutenção predial no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 0.95,
+      "ok": true
+    },
+    {
+      "question": "Qual foi o total de despesas aprovadas no mês passado?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o total de despesas aprovadas no mês passado no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 0.97,
+      "ok": true
+    },
+    {
+      "question": "Quantos dias de férias a Maria ainda pode tirar?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo de férias da funcionária Maria no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.84,
+      "ok": true
+    },
+    {
+      "question": "Qual é o salário do João da equipe de logística?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar salário fixo do funcionário João na equipe de logística no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.92,
+      "ok": true
+    },
+    {
+      "question": "Quero solicitar reembolso de uma viagem de R$ 450.",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "RH processa o reembolso de despesa de viagem do funcionário; finanças não participa.",
+      "layer": "llm",
+      "elapsed_s": 0.99,
+      "ok": true
+    },
+    {
+      "question": "Quantos funcionários temos no departamento comercial?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar headcount do departamento comercial no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.81,
+      "ok": true
+    },
+    {
+      "question": "O Pedro pode tirar 20 dias de férias em julho?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo de férias do funcionário Pedro no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.84,
+      "ok": true
+    },
+    {
+      "question": "Liste os funcionários contratados este ano.",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar lista de contratações de funcionários realizadas este ano no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.88,
+      "ok": true
+    },
+    {
+      "question": "Qual o saldo em estoque do SKU CAD-001?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo em estoque do SKU CAD-001 no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.92,
+      "ok": true
+    },
+    {
+      "question": "Reserve 30 unidades do produto Teclado Mecânico.",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Reservar 30 unidades do produto Teclado Mecânico no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.94,
+      "ok": true
+    },
+    {
+      "question": "Quais produtos estão abaixo do ponto de reposição?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar produtos com saldo abaixo do ponto de reposição no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.9,
+      "ok": true
+    },
+    {
+      "question": "Libere a reserva número 12 do estoque.",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar e liberar a reserva número 12 no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.91,
+      "ok": true
+    },
+    {
+      "question": "Quantas unidades disponíveis temos do monitor 27 polegadas?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo em estoque do monitor 27 polegadas no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.92,
+      "ok": true
+    },
+    {
+      "question": "Preciso repor o SKU MON-027? Qual o ponto de reposição dele?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o ponto de reposição do SKU MON-027 no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.96,
+      "ok": true
+    },
+    {
+      "question": "Posso dar 12% de desconto num pedido de 100 unidades?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar política de desconto para aplicar 12% em pedido de 100 unidades no domínio de vendas.",
+      "layer": "llm",
+      "elapsed_s": 1.09,
+      "ok": true
+    },
+    {
+      "question": "Qual a comissão do vendedor Rafael neste mês?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar pedidos do mês e calcular a comissão do vendedor Rafael em vendas; RH não participa.",
+      "layer": "llm",
+      "elapsed_s": 0.99,
+      "ok": true
+    },
+    {
+      "question": "Crie um pedido de 50 teclados para o cliente Acme.",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Vendas cria o pedido para o cliente Acme; estoque só participaria se o usuário pedisse disponibilidade.",
+      "layer": "llm",
+      "elapsed_s": 1.07,
+      "ok": true
+    },
+    {
+      "question": "Quais pedidos foram fechados na última semana?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar pedidos fechados na última semana no domínio de vendas.",
+      "layer": "llm",
+      "elapsed_s": 0.89,
+      "ok": true
+    },
+    {
+      "question": "Qual é a política de desconto para pedidos acima de 200 unidades?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar política de desconto para pedidos acima de 200 unidades no domínio de vendas.",
+      "layer": "llm",
+      "elapsed_s": 1.0,
+      "ok": true
+    },
+    {
+      "question": "Cancele o pedido número 7 do cliente Beta Corp.",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Cancelar o pedido número 7 do cliente Beta Corp no domínio de vendas.",
+      "layer": "llm",
+      "elapsed_s": 0.93,
+      "ok": true
+    },
+    {
+      "question": "Posso aceitar pedido de 500 unidades com 15% de desconto?",
+      "expect_domains": [
+        "vendas",
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "financas",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Vendas valida política de desconto, estoque verifica disponibilidade de 500 unidades e finanças avalia impacto no caixa.",
+      "layer": "llm",
+      "elapsed_s": 1.3,
+      "ok": true
+    },
+    {
+      "question": "Se eu fechar um pedido de 200 unidades do SKU CAD-001, o estoque cobre?",
+      "expect_domains": [
+        "vendas",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Verificar se o estoque do SKU CAD-001 possui saldo suficiente para cobrir 200 unidades.",
+      "layer": "llm",
+      "elapsed_s": 1.1,
+      "ok": false
+    },
+    {
+      "question": "Quanto vamos pagar de comissão sobre as vendas do mês e isso cabe no caixa?",
+      "expect_domains": [
+        "vendas",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar comissão das vendas do mês no domínio de vendas e verificar impacto no caixa no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 1.15,
+      "ok": true
+    },
+    {
+      "question": "O reembolso de viagem do Carlos já entrou nas contas a pagar?",
+      "expect_domains": [
+        "rh",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o status do reembolso de viagem do funcionário Carlos no RH; contas a pagar não é relevante para o processo de reembolso de despesa de funcionário.",
+      "layer": "llm",
+      "elapsed_s": 1.26,
+      "ok": false
+    },
+    {
+      "question": "Quantos funcionários temos no armazém e qual o saldo de estoque que eles administram?",
+      "expect_domains": [
+        "rh",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar número de funcionários no armazém no RH e saldo de estoque administrado pelo armazém no estoque.",
+      "layer": "llm",
+      "elapsed_s": 1.15,
+      "ok": true
+    },
+    {
+      "question": "Preciso reservar 100 unidades para um pedido novo e saber se o desconto de 10% é permitido.",
+      "expect_domains": [
+        "vendas",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Vendas verifica se o desconto de 10% é permitido; estoque confirma disponibilidade de 100 unidades para reserva.",
+      "layer": "llm",
+      "elapsed_s": 1.23,
+      "ok": true
+    },
+    {
+      "question": "Qual o impacto no fluxo de caixa se repusermos todos os produtos abaixo do ponto de reposição?",
+      "expect_domains": [
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o impacto no fluxo de caixa da reposição de produtos abaixo do ponto de reposição.",
+      "layer": "llm",
+      "elapsed_s": 1.04,
+      "ok": false
+    },
+    {
+      "question": "As férias do time de vendas em dezembro afetam a meta de pedidos do trimestre?",
+      "expect_domains": [
+        "rh",
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "RH verificará o cronograma de férias do time de vendas em dezembro; vendas verificará a meta de pedidos do trimestre e o impacto da ausência do time.",
+      "layer": "llm",
+      "elapsed_s": 1.3,
+      "ok": true
+    },
+    {
+      "question": "Vendemos 300 unidades com 8% de desconto: o estoque aguenta e o caixa recebe quando?",
+      "expect_domains": [
+        "vendas",
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Verificar disponibilidade de 300 unidades no estoque e o momento de recebimento do caixa com 8% de desconto.",
+      "layer": "llm",
+      "elapsed_s": 1.26,
+      "ok": false
+    },
+    {
+      "question": "Me ajuda aí?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.99,
+      "ok": true
+    },
+    {
+      "question": "Qual a previsão do tempo para amanhã em São Paulo?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 1.11,
+      "ok": true
+    },
+    {
+      "question": "Escreve um poema sobre o oceano.",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 1.07,
+      "ok": true
+    },
+    {
+      "question": "Preciso de um relatório.",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 1.02,
+      "ok": true
+    },
+    {
+      "question": "Como está a situação?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.96,
+      "ok": true
+    },
+    {
+      "question": "Tô precisando saber se ainda sobra grana pra pagar os boletos do mês.",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar fluxo de caixa para verificar disponibilidade de pagamento dos boletos do mês.",
+      "layer": "llm",
+      "elapsed_s": 0.99,
+      "ok": true
+    },
+    {
+      "question": "A galera do depósito falou que o teclado tá acabando, ainda tem quanto aí?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo do teclado no estoque.",
+      "layer": "llm",
+      "elapsed_s": 0.8,
+      "ok": true
+    },
+    {
+      "question": "Meu chefe quer saber se posso emendar uns dias de descanso no feriado, quantos dias tenho direito?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo de férias do funcionário no RH para verificar direito a dias de descanso no feriado.",
+      "layer": "llm",
+      "elapsed_s": 1.03,
+      "ok": true
+    },
+    {
+      "question": "O cliente tá chorando um descontinho a mais no pedido grande, rola?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar política de desconto para o pedido grande no domínio de vendas; não há menção a disponibilidade de estoque ou impacto financeiro.",
+      "layer": "llm",
+      "elapsed_s": 1.15,
+      "ok": true
+    },
+    {
+      "question": "me mostre o descritivo de comissão para a funcionária Juliana Castro Neves",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o descritivo de comissão da vendedora Juliana Castro Neves no domínio de vendas.",
+      "layer": "llm",
+      "elapsed_s": 1.0,
+      "ok": true
+    },
+    {
+      "question": "qual a comissão do funcionário Rafael Monteiro neste mês?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar pedidos do mês e calcular a comissão do vendedor Rafael Monteiro em vendas; RH não participa.",
+      "layer": "llm",
+      "elapsed_s": 1.01,
+      "ok": true
+    }
+  ]
+}

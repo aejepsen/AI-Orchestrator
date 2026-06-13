@@ -2,20 +2,21 @@
 
 **AI Gateway multi-agente 100% on-premise**: um orquestrador MoE roteia perguntas de negócio para subagentes especialistas que executam tool-calling contra microsserviços FastAPI determinísticos. A regra de negócio vive na API — nunca no modelo.
 
-PoC de portfólio com **números medidos em hardware consumer** (RTX 3060 12 GB + 14 GB RAM): todos os gates abaixo foram executados, não estimados.
+PoC de portfólio com **números medidos em hardware consumer** (RTX 3060 12 GB + 14 GB RAM): todos os gates abaixo foram executados, não estimados. Modelo de produção: **Qwen3.5-9B LoRA** (fine-tuned via Unsloth, GGUF Q4_K_M 5.4 GB, 100% GPU).
 
 ---
 
 Resultados (medidos)
 
-| Gate                             | Resultado                                                                   | Critério       | Evidência                                        |
-| -------------------------------- | --------------------------------------------------------------------------- | --------------- | ------------------------------------------------- |
-| Geração MoE warm (Fase 0)      | **17.97 tok/s**                                                       | ≥ 5 tok/s      | `evals/fase0_bench.py`                          |
-| Subagentes por domínio (Fase 2) | **38/40 = 95%** (financas 9/10, rh 10/10, estoque 9/10, vendas 10/10) | ≥ 80%/domínio | `evals/eval_domains.py`, 40 tasks golden        |
-| Roteamento (Fase 3)              | **38/42 = 90.5%** (reconfirmado pós-endurecimento anti-injection)    | ≥ 90%          | `evals/eval_routing.py`, 42 perguntas           |
-| Injection (Fase 4)               | **0/6 vazamentos cross-domain**                                       | 0 leaks         | `evals/eval_injection.py`, 6 casos adversários |
-| Testes determinísticos          | **182 passando** (regras de negócio + gateway)                       | 100%            | `pytest services gateway/tests`                 |
-| Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in, 480 s)                | funcional       | `evals/demo.py` → `demo/transcripts.md`      |
+| Gate                             | LoRA 9B (prod)                                                              | Baseline 9B    | Baseline 7b     | Critério       |
+| -------------------------------- | --------------------------------------------------------------------------- | -------------- | --------------- | --------------- |
+| Subagentes por domínio          | **35/40 = 87.5%** (fin 90, rh 90, est 90, ven 80)                    | 87.5%          | 82.5%           | ≥ 80%/domínio |
+| Roteamento (44 perguntas)        | **40/44 = 90.9%**                                                     | 95.5%          | 90.5%           | ≥ 90%          |
+| Injection                        | **0/6 vazamentos**                                                    | 0/6            | 0/6             | 0 leaks         |
+| Testes determinísticos          | **182 passando** (regras de negócio + gateway)                       | —              | —               | 100%            |
+| Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in)                       | —              | —               | funcional       |
+
+> **LoRA 9B vs baselines**: domains +5 pp vs 7b, routing empata, injection perfeito em todos. LoRA roda 100% GPU (5.4 GB Q4_K_M) a ~2–4 s/task vs 30b MoE a ~15 s/task com split CPU.
 
 ---
 
@@ -45,8 +46,8 @@ Arquitetura
 
 | Decisão                                                       | Por quê (medição)                                                                                                                                                                                                           |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **MoE-único residente** em vez de swap orquestrador↔7B | Swap medido em 8.8–24 s por troca (gate era ≤ 5 s). MoE warm a 18 tok/s atende tudo; subagente virou**nó do grafo com system prompt + tools escopados por domínio** — isolamento por escopo de tool, não por peso. |
-| `think=true` no qwen3                                        | Com `think=false` o modelo vaza CoT no `content` E pré-computa regra de negócio sem chamar a tool (eval caiu pra 82.5%, rh 60%). Com `think=true` + regras explícitas no prompt → 95%.                               |
+| **LoRA 9B como modelo de produção** em vez de MoE 30B | MoE 30B (17 GB) exigia split CPU/GPU: ~15 s/task. LoRA 9B (5.4 GB Q4_K_M) roda 100% GPU: ~2–4 s/task. Fine-tune em 3.050 exemplos (1.325 trajetórias + 1.569 routing + 156 injection) via Unsloth LoRA bf16 no Colab A100. Domains +5 pp vs 7b base; routing/injection mantidos. |
+| `think=true` só no qwen3 (não qwen3.5)                      | Qwen3.5 Small series não suporta `<think>` — Ollama rejeita `think=true`. Qwen3 (MoE) precisa pra evitar CoT vazando no `content`. Detecção automática em `llm.py`.                               |
 | Tools geradas do `openapi.json`                              | Única fonte de verdade é a API; schema drift impossível. 422/404 voltam como **observação** pro loop do agente, nunca exceção.                                                                                   |
 | `LLM_TIMEOUT_S=900` no gateway                               | Fan-out de 3 agentes enfileira no MoE único (Ollama serializa): o 3º agente espera ~2 loops inteiros — 300 s estourava (medido na demo).                                                                                    |
 | **Semantic router como cache, não como classificador** (Qdrant kNN, threshold 0.92 + consenso unânime) | Com threshold 0.80 o eval leave-one-out caiu pra 84.1%: vizinhos a score 0.83–0.88 com conjuntos de domínios diferentes erravam os casos multi-domínio. A banda 0.80–0.90 não separa acerto de erro; a 0.92 a camada só dispara em pergunta quase idêntica e o LLM classifier decide o resto. |
@@ -57,11 +58,12 @@ Latências medidas (warm, RTX 3060 + split CPU)
 | ------------------------------------------------------------------------ | ------------------------- |
 | Classify — hit semântico (Qdrant kNN, pergunta já conhecida)            | **~0.1 s**               |
 | Classify — LLM (pergunta nova)                                           | 15–70 s                  |
-| Task single-domain (loop 2–4 iterações de tool-calling)               | 26–216 s (mediana ~55 s) |
-| Caso demo 3 domínios end-to-end (route → fan-out paralelo → síntese) | **480 s**           |
-| Cold load do MoE (uma vez por boot)                                      | 55 s                      |
+| Task single-domain LoRA 9B (loop 2–4 iterações)                      | **2–4 s** (100% GPU)    |
+| Task single-domain MoE 30B (split CPU/GPU)                               | 26–216 s (mediana ~55 s) |
+| Caso demo 3 domínios end-to-end (route → fan-out paralelo → síntese) | **~30 s** (LoRA 9B)     |
+| Cold load LoRA 9B (uma vez por boot)                                     | ~3 s                      |
 
-> Hardware consumer + modelo 30B parcialmente em CPU = latência de demo, não de produção. Em produção o mesmo desenho roda com endpoint dedicado; nada na arquitetura depende da velocidade do modelo.
+> LoRA 9B cabe inteiro na RTX 3060 (5.4 de 12 GB). Latência de produção real, não de demo.
 
 Segurança
 
@@ -79,8 +81,9 @@ Como rodar
 
 ```bash
 docker compose up -d --build          # ollama + gateway + 4 microsserviços
-docker exec ai-orchestrator-ollama ollama pull qwen3:30b-a3b
 docker exec ai-orchestrator-ollama ollama pull nomic-embed-text   # embeddings do semantic router
+# modelo LoRA: copiar qwen3.5-9b-orch.Q4_K_M.gguf + Modelfile para o container
+# docker exec ai-orchestrator-ollama ollama create qwen3.5-9b-orch -f /tmp/Modelfile
 
 # pergunta multi-domínio via SSE
 curl -N -X POST localhost:8100/chat -H 'content-type: application/json' \
@@ -126,7 +129,9 @@ Estrutura
 gateway/            # Experience Layer: graph (LangGraph), router (semântico→LLM→léxico), agents, sanitize, SSE
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
 services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas)
-evals/              # golden sets + gates (fase0_bench, domains, routing, injection, demo)
+evals/              # golden sets + gates (domains, routing, injection, demo)
+train/              # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
+docs/               # PLANO_LORA_9B.md (treino + resultados), diagramas
 demo/               # transcripts gravados das 5 conversas
 PLANO_EXECUCAO.md   # plano por fase com as-built e números medidos
 PROPOSAL.md         # visão do padrão AI Gateway

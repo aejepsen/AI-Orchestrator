@@ -42,17 +42,21 @@ Saída: `train/dataset/orch_sft.jsonl` (+ val).
 - `train/Modelfile`
 - `docs/PLANO_LORA_9B.md` (este)
 
-## Status (2026-06-12)
+## Status (2026-06-13)
 
-- **Fase 1 — EM EXECUÇÃO no Colab A100** (notebook `train/colab_generate_dataset.ipynb` v3; projeto baixado de suasalada.com.br/ai-orchestrator.zip).
-  - `questions`: **3000/3000 ✓** (1431 domain + 1569 routing, 0 duplicatas exatas).
-  - `trajectories`: em andamento — ~15,4s/item, ETA ~5h45 a partir de 90/1431. Rejeição ~4% (`rejected.jsonl` auditável; motivos: sem tool call, alucinação numérica, tool/status errado).
-  - Auditoria parcial (26 trajetórias): 26/26 com tool call, 0 alucinação numérica; amostra exemplar (recusa fundamentada por limite de R$ 3.000 do serviço RH).
-  - Incidente: sessão Colab encerrada após `questions` (2026-06-11 18:47) — confundiu "3000/3000" do estágio 1 com fim do pipeline. Retomado por hash após restore do backup do Drive (`MyDrive/ai-orchestrator-dataset/`). Lição: célula 6 (monitor + backup incremental) deve rodar a cada 1–2h.
-  - Gotchas Colab: instalador do Ollama exige `zstd` (`apt-get install zstd` antes); `think=False` na geração de perguntas; `num_ctx=4096` no tool-loop.
-- **Fase 2 — notebook pronto**: `train/colab_train_lora.ipynb` (Unsloth, transformers v5 pinado, LoRA bf16 r=16/alpha=32, export GGUF Q4_K_M + Modelfile). Falta subir ao Drive e executar.
-- **Créditos Colab**: 83,82 unidades restantes (de 87,45); projeção: ~30 p/ terminar Fase 1 + 16–21 p/ treino → margem p/ re-runs.
-- **Fases 3–5**: pendentes.
+- **Fase 1 — CONCLUÍDA**: dataset final **3.050 exemplos** (train 2.745 / val 305): 1.325 trajetórias + 1.569 routing + 156 routing_injection. Domínios balanceados. Backup em `MyDrive/ai-orchestrator-dataset/`.
+- **Fase 2 — CONCLUÍDA (Colab A100 40GB)**: 2 epochs, 344 steps, 148 min. LoRA bf16 r=16/alpha=32, batch efetivo 16, lr 2e-4 cosine, max_seq 4096. **Epoch 1: train 0.091 / val 0.097. Epoch 2: train 0.071 / val 0.089.** Sem overfit. VRAM pico 31.8 GB. Checkpoints no Drive (`MyDrive/ai-orchestrator-lora/training/`).
+  - Gotchas: `trainer.evaluate()` pós-treino causa CUDA IllegalMemoryAccess nas camadas DeltaNet (bug Unsloth) — usar val loss do treino; Arrow/`load_dataset('json')` falha em tool_calls heterogêneos — json.loads manual; checkpoints SEMPRE no Drive (incidente: 2h17 perdidas por `output_dir` em `/content`); Unsloth gera GGUF em `gguf_gguf/` (adiciona `_gguf` ao path).
+- **Fase 3 — CONCLUÍDA**: merge 16-bit → GGUF Q4_K_M (5.4 GB) + Modelfile no Drive (`MyDrive/ai-orchestrator-lora/`). Necessário limpar cache HF (~19 GB) antes do export por espaço em disco.
+- **Fase 4 — CONCLUÍDA**: `ollama create qwen3.5-9b-orch`, Ollama atualizado 0.24→0.30.8 (0.24 não suportava arquitetura híbrida DeltaNet). Fix `llm.py`: `keep_alive` string→int (Ollama 0.30 rejeita `"-1"`); `think=true` excluído pra qwen3.5 (Small series não suporta). **Resultados (2 runs consistentes):**
+
+| Eval | LoRA 9B | Baseline 9B | Baseline 7b | Gate |
+|---|---|---|---|---|
+| Routing | 90.9% | 95.5% | 90.5% | >=90% PASS |
+| Injection | 0/6 | 0/6 | 0/6 | 0 leaks PASS |
+| Domains | 87.5% (90/90/90/80) | 87.5% (90/80/80/100) | 82.5% | >=80%/dom PASS |
+
+- **Fase 5 — CONCLUÍDA**: `.env MODEL=qwen3.5-9b-orch`, gateway rebuild, README atualizado.
 
 ## Riscos
 

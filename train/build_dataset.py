@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from decimal import Decimal, InvalidOperation
 import json
 import math
 import os
@@ -341,17 +342,49 @@ def _digits_only(text: str) -> str:
     return re.sub(r"[^\d]", "", text)
 
 
-def _answer_numbers_grounded(answer: str, tool_payloads: list[str]) -> tuple[bool, str]:
+def _canonical_decimals(text: str) -> set[str]:
+    """Extrai números do texto normalizados para forma decimal canônica,
+    equalizando formatos BR (1.234,56) e US/JSON (1234.56 / 1,234.56)."""
+    out: set[str] = set()
+    for match in _NUMBER_RE.finditer(text):
+        tok = match.group(0)
+        if "," in tok and "." in tok:
+            if tok.rfind(",") > tok.rfind("."):  # BR: ponto milhar, vírgula decimal
+                tok = tok.replace(".", "").replace(",", ".")
+            else:  # US: vírgula milhar
+                tok = tok.replace(",", "")
+        elif "," in tok:
+            frac = tok.rsplit(",", 1)[1]
+            tok = tok.replace(",", ".") if len(frac) <= 2 else tok.replace(",", "")
+        try:
+            dec = Decimal(tok)
+        except InvalidOperation:
+            continue
+        out.add(format(dec.normalize(), "f"))
+    return out
+
+
+def _answer_numbers_grounded(
+    answer: str, tool_payloads: list[str], question: str = ""
+) -> tuple[bool, str]:
     """Heurística anti-alucinação numérica: todo número (≥2 dígitos contíguos)
-    da resposta final precisa aparecer em algum retorno de tool. Tolerância a
-    formatação de milhar/decimal: compara as versões sem pontuação."""
-    haystack = _digits_only(" ".join(tool_payloads))
+    da resposta final precisa aparecer nos retornos de tool OU na pergunta do
+    usuário (ecoar o valor solicitado é fundamentação legítima). Tolerância a
+    formatação: compara dígitos contíguos E a forma decimal canônica (BR/US),
+    p/ que '5.000,00' na resposta case com '5000.0' no JSON da API."""
+    corpus = " ".join(tool_payloads) + " " + question
+    haystack = _digits_only(corpus)
+    canonical = _canonical_decimals(corpus)
     for match in _NUMBER_RE.finditer(answer):
-        token = _digits_only(match.group(0))
+        raw = match.group(0)
+        token = _digits_only(raw)
         if len(token) < 2:
             continue
-        if token not in haystack:
-            return False, f"número '{match.group(0)}' ausente dos retornos de tool"
+        if token in haystack:
+            continue
+        if _canonical_decimals(raw) & canonical:
+            continue
+        return False, f"número '{raw}' ausente dos retornos de tool"
     return True, ""
 
 
@@ -426,7 +459,7 @@ def _run_agent_capturing(
     }
 
 
-def _quality_check(run: dict[str, Any]) -> tuple[bool, str]:
+def _quality_check(run: dict[str, Any], question: str = "") -> tuple[bool, str]:
     """Filtro automático do plano: só trajetórias fundamentadas entram no SFT."""
     if run["stop_reason"] != "answer":
         return False, f"stop_reason={run['stop_reason']}"
@@ -436,7 +469,7 @@ def _quality_check(run: dict[str, Any]) -> tuple[bool, str]:
         return False, "tool com status 0 (tool inexistente/transporte)"
     if not run["final_answer"].strip():
         return False, "resposta final vazia"
-    ok, reason = _answer_numbers_grounded(run["final_answer"], run["tool_payloads"])
+    ok, reason = _answer_numbers_grounded(run["final_answer"], run["tool_payloads"], question)
     if not ok:
         return False, reason
     return True, ""
@@ -489,7 +522,7 @@ def stage_trajectories(settings: Settings, limit: int | None) -> None:
             _progress("trajectories", i, len(questions), started)
             continue
 
-        ok, reason = _quality_check(run)
+        ok, reason = _quality_check(run, item["question"])
         if ok:
             _append_jsonl(
                 TRAJECTORIES_PATH,

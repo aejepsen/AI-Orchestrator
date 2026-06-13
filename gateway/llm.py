@@ -70,7 +70,12 @@ class OllamaClient:
         # VRAM quando outro modelo precisa carregar → deadlock do scheduler
         # (request espera espaço que nunca libera). 30m mantém quente sob
         # tráfego real e ainda permite eviction.
-        self._keep_alive = keep_alive
+        # Ollama 0.30+ rejeita keep_alive string sem unidade (ex.: "-1").
+        # Converte pra int se for numérico (segundos); senão mantém string ("30m").
+        try:
+            self._keep_alive = int(keep_alive)
+        except (ValueError, TypeError):
+            self._keep_alive = keep_alive
         self._client = client or httpx.Client(timeout=timeout_s)
 
     def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
@@ -99,9 +104,9 @@ class OllamaClient:
             "model": self._model,
             "messages": messages,
             "stream": False,
-            # think só em modelos com modo de raciocínio (qwen3); o Ollama
-            # rejeita o parâmetro em modelos sem suporte (ex.: qwen2.5).
-            "think": self._model.startswith("qwen3"),
+            # think só em modelos com modo de raciocínio (qwen3, não qwen3.5);
+            # Qwen3.5 Small series não emite <think> — Ollama rejeita think=true.
+            "think": self._model.startswith("qwen3") and "qwen3.5" not in self._model,
             "keep_alive": self._keep_alive,
             "options": {"temperature": temperature},
         }

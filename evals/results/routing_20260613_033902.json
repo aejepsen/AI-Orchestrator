@@ -1,0 +1,671 @@
+{
+  "timestamp": "2026-06-13T03:39:02.406581",
+  "model": "qwen3.5-9b-orch",
+  "semantic": false,
+  "layer_counts": {
+    "semantic": 0,
+    "llm": 8,
+    "lexical": 36
+  },
+  "total": 44,
+  "hits": 40,
+  "accuracy": 0.9091,
+  "gate": 0.9,
+  "passed": true,
+  "items": [
+    {
+      "question": "Quais contas a pagar vencem esta semana?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.02,
+      "ok": true
+    },
+    {
+      "question": "Qual é a projeção de fluxo de caixa para os próximos 30 dias?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quem precisa aprovar um pagamento de R$ 80.000?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quanto temos de contas a receber em aberto?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Registre uma despesa de R$ 1.200 com manutenção predial.",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual foi o total de despesas aprovadas no mês passado?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quantos dias de férias a Maria ainda pode tirar?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual é o salário do João da equipe de logística?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quero solicitar reembolso de uma viagem de R$ 450.",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quantos funcionários temos no departamento comercial?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "O Pedro pode tirar 20 dias de férias em julho?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Liste os funcionários contratados este ano.",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual o saldo em estoque do SKU CAD-001?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Reserve 30 unidades do produto Teclado Mecânico.",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": false
+    },
+    {
+      "question": "Quais produtos estão abaixo do ponto de reposição?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Libere a reserva número 12 do estoque.",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quantas unidades disponíveis temos do monitor 27 polegadas?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Preciso repor o SKU MON-027? Qual o ponto de reposição dele?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Posso dar 12% de desconto num pedido de 100 unidades?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual a comissão do vendedor Rafael neste mês?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Crie um pedido de 50 teclados para o cliente Acme.",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quais pedidos foram fechados na última semana?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual é a política de desconto para pedidos acima de 200 unidades?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Cancele o pedido número 7 do cliente Beta Corp.",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Posso aceitar pedido de 500 unidades com 15% de desconto?",
+      "expect_domains": [
+        "vendas",
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": false
+    },
+    {
+      "question": "Se eu fechar um pedido de 200 unidades do SKU CAD-001, o estoque cobre?",
+      "expect_domains": [
+        "vendas",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque, vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quanto vamos pagar de comissão sobre as vendas do mês e isso cabe no caixa?",
+      "expect_domains": [
+        "vendas",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas, financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "O reembolso de viagem do Carlos já entrou nas contas a pagar?",
+      "expect_domains": [
+        "rh",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas",
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh, financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Quantos funcionários temos no armazém e qual o saldo de estoque que eles administram?",
+      "expect_domains": [
+        "rh",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh, estoque.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Preciso reservar 100 unidades para um pedido novo e saber se o desconto de 10% é permitido.",
+      "expect_domains": [
+        "vendas",
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque, vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual o impacto no fluxo de caixa se repusermos todos os produtos abaixo do ponto de reposição?",
+      "expect_domains": [
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque, financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "As férias do time de vendas em dezembro afetam a meta de pedidos do trimestre?",
+      "expect_domains": [
+        "rh",
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh, vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Vendemos 300 unidades com 8% de desconto: o estoque aguenta e o caixa recebe quando?",
+      "expect_domains": [
+        "vendas",
+        "estoque",
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "financas",
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: estoque, vendas, financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Me ajuda aí?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Qual a previsão do tempo para amanhã em São Paulo?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Escreve um poema sobre o oceano.",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Preciso de um relatório.",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Como está a situação?",
+      "expect_domains": [],
+      "expect_clarification": true,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "Tô precisando saber se ainda sobra grana pra pagar os boletos do mês.",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: financas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "A galera do depósito falou que o teclado tá acabando, ainda tem quanto aí?",
+      "expect_domains": [
+        "estoque"
+      ],
+      "expect_clarification": false,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": false
+    },
+    {
+      "question": "Meu chefe quer saber se posso emendar uns dias de descanso no feriado, quantos dias tenho direito?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [],
+      "got_clarification": true,
+      "plan": "",
+      "layer": "llm",
+      "elapsed_s": 0.0,
+      "ok": false
+    },
+    {
+      "question": "O cliente tá chorando um descontinho a mais no pedido grande, rola?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "me mostre o descritivo de comissão para a funcionária Juliana Castro Neves",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    },
+    {
+      "question": "qual a comissão do funcionário Rafael Monteiro neste mês?",
+      "expect_domains": [
+        "vendas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "vendas"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por keywords para: rh, vendas.",
+      "layer": "lexical",
+      "elapsed_s": 0.0,
+      "ok": true
+    }
+  ]
+}

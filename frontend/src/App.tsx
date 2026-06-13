@@ -113,7 +113,10 @@ export default function App() {
               finishedAgents += 1;
               setPendingAgents((prev) => prev.filter((d) => d !== event.data.domain));
               if (expectedAgents > 0 && finishedAgents >= expectedAgents) setStage("synthesize");
-              append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
+              // Single-domain: resposta já aparece no "final" — não duplicar.
+              if (expectedAgents > 1) {
+                append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
+              }
               break;
             case "final":
               append({ kind: "final", text: event.data.answer });
@@ -191,7 +194,10 @@ export default function App() {
               finishedAgents += 1;
               setPendingAgents((prev) => prev.filter((d) => d !== event.data.domain));
               if (expectedAgents > 0 && finishedAgents >= expectedAgents) setStage("synthesize");
-              append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
+              // Single-domain: resposta já aparece no "final" — não duplicar.
+              if (expectedAgents > 1) {
+                append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
+              }
               break;
             case "final":
               append({ kind: "final", text: event.data.answer });

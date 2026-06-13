@@ -106,14 +106,16 @@ def create_app(
                     trace_id=trace_id,
                     thread_id=tid,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),
-                    on_confirm=lambda domains, plan: emit("confirm", {"domains": domains, "plan": plan, "thread_id": tid}),
+                    # HITL desabilitado até detecção de intent write vs read.
+                    # on_confirm=lambda domains, plan: emit("confirm", {"domains": domains, "plan": plan, "thread_id": tid}),
                 )
                 for update in stream:
                     for node, payload in update.items():
+                        if not payload:
+                            continue
                         if node == "classify":
-                            emit("route", payload["route"])
+                            emit("route", payload.get("route", {}))
                         elif node == "confirm_dispatch":
-                            # Se rejeitado, final_answer já está no payload.
                             if "final_answer" in payload:
                                 emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
                         elif node in ("synthesize", "respond_clarification"):
@@ -176,6 +178,8 @@ def create_app(
                 )
                 for update in stream:
                     for node, payload in update.items():
+                        if not payload:
+                            continue
                         if node in ("synthesize", "respond_clarification", "confirm_dispatch"):
                             if "final_answer" in payload:
                                 emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})

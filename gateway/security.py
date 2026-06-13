@@ -73,7 +73,17 @@ class RateLimiter:
 
 
 def client_ip(headers: Mapping[str, str], fallback: str) -> str:
-    """IP real atrás do Cloudflare: primeiro hop de `X-Forwarded-For`."""
+    """IP real atrás do Cloudflare — fallback chain confiável.
+
+    CF-Connecting-IP é setado pelo Cloudflare e não pode ser forjado pelo
+    cliente. X-Forwarded-For é facilmente spoofável com um header custom.
+    """
+    cf_ip = headers.get("cf-connecting-ip", "").strip()
+    if cf_ip:
+        return cf_ip
+    real_ip = headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
     forwarded = headers.get("x-forwarded-for", "")
     first = forwarded.split(",")[0].strip()
     return first or fallback

@@ -1,6 +1,6 @@
-httpx>=0.28,<1
-fastapi>=0.115,<1
-uvicorn>=0.34,<1
-pydantic>=2.10,<3
-langgraph>=1.2,<2
-langfuse>=2,<3
+httpx==0.28.1
+fastapi==0.115.0
+uvicorn==0.34.0
+pydantic==2.11.0
+langgraph==0.4.1
+langfuse==2.56.1

@@ -31,6 +31,29 @@ _WRAPPER_TAG = re.compile(
 )
 
 
+_INJECTION_PATTERNS = [
+    re.compile(r"ignore.*instru[çc]", re.IGNORECASE),
+    re.compile(r"ignore.*instruct", re.IGNORECASE),
+    re.compile(r"ignore.*previous", re.IGNORECASE),
+    re.compile(r"ignore.*above", re.IGNORECASE),
+    re.compile(r"esque[çc]a.*tudo", re.IGNORECASE),
+    re.compile(r"forget.*everything", re.IGNORECASE),
+    re.compile(r"voc[eê] agora [eé]", re.IGNORECASE),
+    re.compile(r"you are now", re.IGNORECASE),
+    re.compile(r"act as", re.IGNORECASE),
+    re.compile(r"atue como", re.IGNORECASE),
+    re.compile(r"system prompt", re.IGNORECASE),
+    re.compile(r"system message", re.IGNORECASE),
+    re.compile(r"revel.*instru[çc]", re.IGNORECASE),
+    re.compile(r"reveal.*instruct", re.IGNORECASE),
+]
+
+
+def flag_injection(text: str) -> bool:
+    """Retorna True se o texto contém padrão semântico de injection."""
+    return any(p.search(text) for p in _INJECTION_PATTERNS)
+
+
 def sanitize_question(text: str) -> str:
     """Remove sequências de escape estrutural do texto não confiável."""
     text = _SPECIAL_TOKEN.sub(" ", text)

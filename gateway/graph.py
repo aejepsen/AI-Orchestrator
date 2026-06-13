@@ -31,7 +31,7 @@ from gateway.agents import DomainAgentRunner
 from gateway.config import Settings
 from gateway.llm import OllamaClient
 from gateway.router import classify_intent
-from gateway.sanitize import sanitize_question
+from gateway.sanitize import flag_injection, sanitize_question
 from gateway.tracing import TraceHandle, Tracer
 
 logger = logging.getLogger("gateway")
@@ -54,6 +54,8 @@ class GraphState(TypedDict, total=False):
     history: list[dict[str, str]]  # [{"role": "user", "content": ...}, ...]
     # HITL
     pending_confirmation: dict[str, Any] | None
+    # Segurança: flag de injection semântica detectada.
+    _injection_suspect: bool
 
 
 _SYNTH_SYSTEM = """Você é o orquestrador de um sistema corporativo multi-agente.
@@ -133,6 +135,7 @@ class GatewayGraph:
         # Limpa estado residual de turns anteriores (checkpointer mantém tudo).
         update: GraphState = {
             "sanitized": sanitize_question(state["question"]),
+            "_injection_suspect": flag_injection(state["question"]),
             "final_answer": "",
             "agent_results": {},
             "route": {},
@@ -141,6 +144,8 @@ class GatewayGraph:
         }
         if not state.get("trace_id"):
             update["trace_id"] = str(uuid.uuid4())
+        if update.get("_injection_suspect"):
+            logger.warning("injection_suspect detected in question: %s", state["question"][:120])
         _log_node({**state, **update}, "sanitize", started, domains=[])
         if span:
             span.end()

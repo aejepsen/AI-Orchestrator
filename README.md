@@ -75,7 +75,13 @@ Segurança
 
 Observabilidade
 
-`trace_id` por request propagado pelo grafo; log JSON estruturado por nó (nó, latência, domínios). Eventos SSE em tempo real: `route` → `agent` (um por subagente concluído) → `final`.
+`trace_id` por request propagado pelo grafo; log JSON estruturado por no (no, latencia, dominios). Eventos SSE em tempo real: `route` -> `agent` (um por subagente concluido) -> `final`.
+
+**Langfuse tracing** (porta 3100): trace por request, span por no do grafo, generation por chamada LLM. Container Langfuse v2 self-hosted + Postgres dedicado. Degradacao graceful — Langfuse fora nao bloqueia requests.
+
+**Estado conversacional**: `MemorySaver` checkpointer com `thread_id` por sessao. Frontend persiste thread em localStorage; botao "Nova conversa" reseta contexto.
+
+**HITL (Human-in-the-Loop)**: no `confirm_dispatch` com `interrupt()` do LangGraph + endpoint `POST /chat/{thread_id}/resume`. Preparado e funcional, **desabilitado por padrao** (requer deteccao de write intent para ativacao seletiva).
 
 Como rodar
 

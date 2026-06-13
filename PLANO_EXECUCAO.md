@@ -135,3 +135,21 @@ Após PoC completa, fine-tune LoRA do Qwen3.5-9B especializado em tool-calling +
 | Latência por task | **~2–4 s** (100% GPU) | — | ~7 s | ~55 s |
 
 **Decisão:** LoRA 9B promovido a modelo de produção (`.env MODEL=qwen3.5-9b-orch`). Domains +5 pp vs 7b, routing dentro do gate, latência 5–7x menor que MoE 30B. Trade-off aceito: routing -4.6 pp vs baseline 9B (casos coloquiais), compensado pela latência e pelo fato de caber 100% em GPU.
+
+### Fase 6 — Observabilidade LLM, HITL e estado conversacional (Fase 6.6 da skill)
+
+Implementado sobre a PoC estabilizada com LoRA 9B.
+
+**Langfuse observability.** `gateway/tracing.py`: trace por request, span por no do grafo, generation por chamada LLM. Container Langfuse v2 + Postgres dedicado no `docker-compose.yml` (porta 3100). Degradacao graceful: Langfuse fora nao impacta requests.
+
+**HITL (Human-in-the-Loop).** No `confirm_dispatch` entre classify e dispatch. Usa `interrupt()` nativo do LangGraph. Evento SSE `confirm` com preview da acao. Endpoint `POST /chat/{thread_id}/resume` para retomar. Frontend: `ConfirmCard.tsx`. **Desabilitado por padrao** — sem deteccao de write vs read intent, dispara para toda query. Auto-aprova sem callback.
+
+**Estado conversacional.** `MemorySaver` como checkpointer. `thread_id` por sessao propagado no POST `/chat`. Frontend persiste `thread_id` em localStorage. Botao "Nova conversa" reseta thread.
+
+#### Gotchas encontrados
+
+1. **Callbacks em thread-local.** Lambdas (`on_agent`, `on_confirm`, trace) movidos de GraphState para `threading.local()` porque MemorySaver/checkpointer nao serializa funcoes (TypeError no msgpack).
+2. **Estado residual entre turns.** Com checkpointer, `final_answer` do turn anterior persiste. `_route_after_confirm` desviava pro END via truthy check. Fix: `_sanitize` limpa `final_answer`, `agent_results`, `route`, `error`, `pending_confirmation` a cada novo turn.
+3. **Null payload no interrupt.** Stream yield com payload `None` quando `interrupt()` suspende grafo. `"final_answer" in None` dispara TypeError. Fix: guard `if not payload: continue`.
+4. **Langfuse v3 exige ClickHouse.** Pin para `langfuse/langfuse:2`. Healthcheck: `node -e "require('http')..."` (wget indisponivel). `HOSTNAME=0.0.0.0` obrigatorio (Next.js bind).
+5. **Single-domain box duplicado.** Agent event e final event identicos com 1 agente. Fix: frontend so renderiza agent box quando `expectedAgents > 1`.

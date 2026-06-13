@@ -191,6 +191,22 @@ Sem estado, cada `/chat` é uma conversa nova. Usuário não pode dizer "e o est
 
 JSON crítico (router) com schema enforcement nativo do serving (format/json_schema no Ollama, guided_json no vLLM, tool-use forçado em API) — não regex sobre texto livre. Parse + retry é fallback, não estratégia.
 
+### Gotchas / Armadilhas (Fase 6.6)
+
+Incidentes reais encontrados durante a implementacao. Documentados como regra para evitar reincidencia.
+
+1. **Callbacks nao-serializaveis no GraphState.** NUNCA colocar lambdas, closures ou funcoes no GraphState quando usando checkpointer (MemorySaver, SQLite, etc). O checkpointer serializa o estado inteiro via msgpack/pickle; funcoes nao serializam e disparam TypeError. Solucao: mover callbacks (`on_agent`, `on_confirm`, trace functions) para `threading.local()` ou variavel de instancia do runner. O GraphState deve conter apenas dados primitivos e estruturas serializaveis.
+
+2. **Estado residual entre turns.** Com checkpointer ativo, campos como `final_answer`, `agent_results`, `route`, `error` e `pending_confirmation` persistem entre turns. Conditional edges que checam estado (ex.: `if state["final_answer"]`) sao enganadas por valores de turns anteriores — o grafo desvia para END sem executar dispatch. Regra: limpar campos de resultado no primeiro no de cada turn (`_sanitize` zera `final_answer`, `agent_results`, `route`, `error`, `pending_confirmation`).
+
+3. **Null payload no interrupt.** Quando `interrupt()` suspende o grafo, o stream pode yieldar payloads `None`. Codigo como `"final_answer" in None` dispara TypeError. Regra: sempre guardar com `if not payload: continue` antes de acessar campos do payload no worker/stream handler.
+
+4. **Langfuse v3 vs v2.** Langfuse v3 exige ClickHouse como backend — overhead inaceitavel para PoC. Usar `langfuse/langfuse:2` (Postgres only). Detalhes de container: imagem nao tem wget/curl, healthcheck via `node -e "require('http')..."`. Variavel `HOSTNAME=0.0.0.0` obrigatoria (Next.js bind — sem ela, escuta so em 127.0.0.1 dentro do container).
+
+5. **HITL scoping.** `interrupt()` sem deteccao de intent (write vs read) dispara para toda query, incluindo leituras. Isso trava o fluxo em perguntas que nao executam acoes destrutivas. Regra: desabilitar HITL por padrao; ativar so quando houver deteccao confiavel de write intent. Auto-aprovar sem callback e a estrategia segura ate a deteccao existir.
+
+6. **Single-domain box duplicado no frontend.** Com um unico agente, o evento `agent` e o evento `final` carregam conteudo identico — o frontend renderiza dois cards com o mesmo texto. Fix: so renderizar agent box quando `expectedAgents > 1`.
+
 ## Fase 7 (opcional) — Fine-tune por destilação (LoRA)
 
 Só após baseline medido. Critério de adoção definido **antes** de treinar: superar baseline sem regressão em nenhum gate; empate = mantém base.

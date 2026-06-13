@@ -112,12 +112,23 @@ class GatewayGraph:
         self._semantic = semantic
         self._tracer = tracer
 
-        # Checkpointer in-memory (produção: usar SqliteSaver ou PostgresSaver).
-        # MemorySaver vem incluso no langgraph — zero dependências extras.
+        # Checkpointer: SqliteSaver se THREAD_DB_PATH configurado, senão MemorySaver.
         try:
-            from langgraph.checkpoint.memory import MemorySaver
+            if self._settings and self._settings.thread_db_path:
+                try:
+                    from langgraph.checkpoint.sqlite import SqliteSaver
 
-            self._checkpointer = MemorySaver()
+                    self._checkpointer = SqliteSaver.from_conn_string(self._settings.thread_db_path)
+                    logger.info("Checkpointer: SqliteSaver (%s)", self._settings.thread_db_path)
+                except ImportError:
+                    logger.warning("langgraph-checkpoint-sqlite não instalado; usando MemorySaver (in-memory)")
+                    from langgraph.checkpoint.memory import MemorySaver
+
+                    self._checkpointer = MemorySaver()
+            else:
+                from langgraph.checkpoint.memory import MemorySaver
+
+                self._checkpointer = MemorySaver()
         except ImportError:
             self._checkpointer = None
 

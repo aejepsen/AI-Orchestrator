@@ -18,8 +18,10 @@ não dependa dos microsserviços (o registry busca os OpenAPI no boot).
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -66,6 +68,14 @@ def create_app(
     factory = graph_factory or (lambda: _default_graph_factory())
     guard = access_guard or AccessTokenGuard()
     limiter = rate_limiter or RateLimiter()
+
+    # Pool dedicado para execução síncrona do grafo (não compete com asyncio default pool).
+    _settings_boot = load_settings()
+    _graph_pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=_settings_boot.max_graph_workers,
+        thread_name_prefix="graph",
+    )
+    _request_timeout_s = _settings_boot.request_timeout_s
 
     def get_graph() -> GatewayGraph:
         # Lazy + cacheado: registry (OpenAPI dos serviços) só no primeiro /chat.
@@ -127,16 +137,20 @@ def create_app(
             finally:
                 emit(*_SENTINEL)
 
-        future = loop.run_in_executor(None, worker)
+        future = loop.run_in_executor(_graph_pool, worker)
 
         async def event_stream():
             # Heartbeat: Cloudflare encerra com 524 após ~100 s sem bytes; os
             # agentes podem ficar minutos entre eventos. Comentário SSE (":")
             # mantém a conexão viva e é ignorado pelos parsers.
+            start = time.monotonic()
             while True:
                 try:
                     event, data = await asyncio.wait_for(queue.get(), timeout=15.0)
                 except TimeoutError:
+                    if time.monotonic() - start > _request_timeout_s:
+                        yield _sse("error", {"detail": "Tempo limite excedido.", "trace_id": trace_id})
+                        break
                     yield ": keepalive\n\n"
                     continue
                 if (event, data) == _SENTINEL:
@@ -191,13 +205,17 @@ def create_app(
             finally:
                 emit(*_SENTINEL)
 
-        future = loop.run_in_executor(None, worker)
+        future = loop.run_in_executor(_graph_pool, worker)
 
         async def event_stream():
+            start = time.monotonic()
             while True:
                 try:
                     event, data = await asyncio.wait_for(queue.get(), timeout=15.0)
                 except TimeoutError:
+                    if time.monotonic() - start > _request_timeout_s:
+                        yield _sse("error", {"detail": "Tempo limite excedido.", "trace_id": trace_id})
+                        break
                     yield ": keepalive\n\n"
                     continue
                 if (event, data) == _SENTINEL:

@@ -60,6 +60,10 @@ class Settings:
     langfuse_secret_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-local"))
     # Estado conversacional (multi-turn)
     thread_db_path: str = field(default_factory=lambda: os.environ.get("THREAD_DB_PATH", "/tmp/threads.db"))
+    # Pool dedicado para execução do grafo (evita competir com asyncio default pool).
+    max_graph_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_GRAPH_WORKERS", "4")))
+    # Timeout global de request SSE (segundos). Independente do LLM_TIMEOUT_S.
+    request_timeout_s: float = field(default_factory=lambda: float(os.environ.get("REQUEST_TIMEOUT_S", "600")))
 
 
 def load_settings() -> Settings:

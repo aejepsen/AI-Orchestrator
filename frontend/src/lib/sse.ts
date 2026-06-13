@@ -96,10 +96,6 @@ export async function streamChat(
 
   if (!response.body) throw new ChatHttpError(response.status, "Resposta sem corpo de streaming.");
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
   await consumeSSE(response, onEvent);
 }
 

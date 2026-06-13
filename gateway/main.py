@@ -36,6 +36,7 @@ from gateway.security import AccessTokenGuard, RateLimiter, client_ip
 from gateway.tracing import Tracer
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 _SENTINEL = ("__done__", None)
 
@@ -61,7 +62,7 @@ def create_app(
     access_guard: AccessTokenGuard | None = None,
     rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="AI-Orchestrator Gateway", version="0.5.0")
+    app = FastAPI(title="AI-Orchestrator Gateway", version="0.5.0", docs_url=None, redoc_url=None, openapi_url=None)
     factory = graph_factory or (lambda: _default_graph_factory())
     guard = access_guard or AccessTokenGuard()
     limiter = rate_limiter or RateLimiter()
@@ -121,7 +122,8 @@ def create_app(
                         elif node in ("synthesize", "respond_clarification"):
                             emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
             except Exception as exc:  # noqa: BLE001 — erro vira evento SSE, não 500 mudo
-                emit("error", {"detail": str(exc), "trace_id": trace_id})
+                logger.exception("Erro no grafo: %s", exc)
+                emit("error", {"detail": "Erro interno. Tente novamente.", "trace_id": trace_id})
             finally:
                 emit(*_SENTINEL)
 
@@ -184,7 +186,8 @@ def create_app(
                             if "final_answer" in payload:
                                 emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
             except Exception as exc:  # noqa: BLE001
-                emit("error", {"detail": str(exc), "trace_id": trace_id})
+                logger.exception("Erro no grafo (resume): %s", exc)
+                emit("error", {"detail": "Erro interno. Tente novamente.", "trace_id": trace_id})
             finally:
                 emit(*_SENTINEL)
 

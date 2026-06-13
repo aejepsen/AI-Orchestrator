@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 
 import httpx
+import pytest
 
 from gateway.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def _allow_open_access(monkeypatch):
+    """Testes unitários rodam sem ACCESS_TOKEN; habilita modo dev."""
+    monkeypatch.setenv("ALLOW_OPEN_ACCESS", "1")
 
 
 class FakeGraph:
@@ -101,7 +109,9 @@ def test_chat_erro_vira_evento_sse():
     _, _, events = _post_chat(FakeGraph(boom=True), "qualquer coisa")
 
     assert events[0][0] == "error"
-    assert "grafo explodiu" in events[0][1]["detail"]
+    # Stack trace NÃO é exposto ao cliente; mensagem genérica.
+    assert events[0][1]["detail"] == "Erro interno. Tente novamente."
+    assert "trace_id" in events[0][1]
 
 
 def test_chat_question_vazia_e_422():

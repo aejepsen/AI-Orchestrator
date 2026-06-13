@@ -26,7 +26,10 @@ class AccessTokenGuard:
     def __init__(self, expected: str | None = None) -> None:
         self._expected = expected if expected is not None else (os.environ.get("ACCESS_TOKEN") or None)
         if self._expected is None:
-            logger.warning("ACCESS_TOKEN não configurado: POST /chat aberto (modo dev)")
+            if os.environ.get("ALLOW_OPEN_ACCESS") == "1":
+                logger.warning("ACCESS_TOKEN não configurado + ALLOW_OPEN_ACCESS=1: /chat aberto (modo dev)")
+            else:
+                logger.warning("ACCESS_TOKEN não configurado: /chat bloqueado (fail-closed)")
 
     @property
     def enabled(self) -> bool:
@@ -34,7 +37,9 @@ class AccessTokenGuard:
 
     def allows(self, provided: str | None) -> bool:
         if self._expected is None:
-            return True
+            # Fail-closed: sem token configurado, bloqueia em produção.
+            # Modo dev explícito requer ALLOW_OPEN_ACCESS=1.
+            return os.environ.get("ALLOW_OPEN_ACCESS") == "1"
         if not provided:
             return False
         return hmac.compare_digest(provided.encode(), self._expected.encode())

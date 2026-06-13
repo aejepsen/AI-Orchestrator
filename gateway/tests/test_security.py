@@ -28,7 +28,16 @@ def _post(app, headers: dict[str, str] | None = None) -> httpx.Response:
 # --- AccessTokenGuard ---------------------------------------------------------
 
 
-def test_guard_sem_token_configurado_e_aberto():
+def test_guard_sem_token_configurado_fail_closed(monkeypatch):
+    monkeypatch.delenv("ALLOW_OPEN_ACCESS", raising=False)
+    guard = AccessTokenGuard(expected=None)
+    assert not guard.enabled
+    assert not guard.allows(None)
+    assert not guard.allows("qualquer-coisa")
+
+
+def test_guard_sem_token_com_allow_open_access(monkeypatch):
+    monkeypatch.setenv("ALLOW_OPEN_ACCESS", "1")
     guard = AccessTokenGuard(expected=None)
     assert not guard.enabled
     assert guard.allows(None)
@@ -85,7 +94,8 @@ def test_rate_limiter_default_vem_do_env(monkeypatch):
     assert RateLimiter().max_requests == 3
 
 
-def test_chat_429_apos_limite():
+def test_chat_429_apos_limite(monkeypatch):
+    monkeypatch.setenv("ALLOW_OPEN_ACCESS", "1")
     app = create_app(
         graph_factory=lambda: FakeGraph(),
         access_guard=AccessTokenGuard(expected=None),
@@ -98,7 +108,8 @@ def test_chat_429_apos_limite():
     assert excedido.json() == {"error": "rate_limited", "detail": "Limite de requisições por hora atingido."}
 
 
-def test_rate_limit_usa_primeiro_hop_de_x_forwarded_for():
+def test_rate_limit_usa_primeiro_hop_de_x_forwarded_for(monkeypatch):
+    monkeypatch.setenv("ALLOW_OPEN_ACCESS", "1")
     app = create_app(
         graph_factory=lambda: FakeGraph(),
         access_guard=AccessTokenGuard(expected=None),

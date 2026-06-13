@@ -39,6 +39,7 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:?defina INTERNAL_API_KEY no .env}
       # Boundary público: sem ACCESS_TOKEN o /chat fica aberto (modo dev).
       - ACCESS_TOKEN=${ACCESS_TOKEN:-}
+      - ALLOW_OPEN_ACCESS=${ALLOW_OPEN_ACCESS:-1}
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10}
       # Fan-out 3 domínios enfileira no MoE único (Ollama serializa): o 3º agente
       # espera ~2 loops inteiros antes de começar — 300 s estourava (medido na demo).

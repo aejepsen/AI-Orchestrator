@@ -1,20 +1,12 @@
-# Segredos e VCS
 .env
-.git/
-
-# Ambientes e caches Python
-.venv/
-__pycache__/
+.env.*
+.git
+.venv
+__pycache__
 *.pyc
-.pytest_cache/
-.ruff_cache/
-
-# Node (o build do frontend roda dentro do Dockerfile; só os fontes entram)
-node_modules/
-frontend/node_modules/
-frontend/dist/
-
-# Artefatos locais
-evals/results/
-demo/
-*.db
+node_modules
+.next
+coverage
+*.egg-info
+.pytest_cache
+.ruff_cache

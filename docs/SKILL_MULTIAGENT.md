@@ -157,15 +157,39 @@ Camada kNN na frente do router LLM: robustez a paráfrase + latência menor em r
 - **Eval com leave-one-out**: ao avaliar pergunta do golden, excluir o próprio ponto do índice — senão o acerto é self-match trivial. Relatório registra camada usada (semantic/llm/lexical) + latência por camada.
 - **Lição medida (caso real)**: threshold 0.92 + consenso restritivo → 0 acionamentos; LLM resolvia em 1.6s. Camada semântica só compensa se o LLM de routing for lento ou caro — **meça antes de tunar o threshold**, e aceite desligar a camada se o baseline já é bom.
 
-## Fase 6.6 — Estado, HITL e observabilidade (obrigatório em produção real)
+## Fase 6.6 — Observabilidade LLM, HITL e estado conversacional
 
-Itens que PoC dispensa mas produto não:
+**Esta fase não é opcional.** Sistema multi-agente sem tracing LLM dedicado, sem gate humano antes de ações destrutivas e sem estado conversacional não é production-grade — é demo. Implemente junto com a Fase 6 ou imediatamente após.
 
-- **Estado conversacional**: multi-turn exige checkpointer (LangGraph checkpointer → SQLite/Postgres/Redis). Janela de história com teto de tokens + sumarização do excedente — história infinita = custo infinito e contexto estourado.
-- **Human-in-the-loop**: toda ação destrutiva/irreversível executada por agente (deletar, pagar, enviar) passa por interrupt + aprovação humana. Whitelist de tools auto-executáveis; o resto pausa o grafo.
-- **Observabilidade LLM dedicada** (além de logs): tracing de prompt/response/tokens/custo por request — Langfuse (self-hosted, open source, default zero-cloud) ou OpenTelemetry GenAI. Sem isso, debugar "por que o agente fez X" em produção é arqueologia.
-- **Structured output**: JSON crítico (router) com schema enforcement nativo do serving (format/json_schema no Ollama, guided_json no vLLM, tool-use forçado em API) — não regex sobre texto livre. Parse + retry é fallback, não estratégia.
-- **Custo por request como métrica de produto**: tokens in/out por nó do grafo, agregado por usuário/dia. Em API isso é fatura; em local é capacidade.
+### Observabilidade LLM (Langfuse) — implementar primeiro
+
+Logs estruturados mostram que algo aconteceu. **Tracing LLM mostra por quê.** Cada chamada ao modelo deve registrar: prompt completo, response, tokens in/out, latência, modelo, temperatura, tool calls. Sem isso, debugar "por que o agente roteou errado" ou "por que gastou 4 iterações" é arqueologia em logs.
+
+- **Solução recomendada: Langfuse self-hosted** (container no compose, Postgres próprio, UI web). Zero-cloud, open source, SDK Python leve (`langfuse`). Alternativa: OpenTelemetry GenAI spans — mais genérico, menos dashboard pronto.
+- **Onde instrumentar**: `llm.py` (decorator/wrapper em `chat()` e `embed()`), `graph.py` (span por nó do grafo), `agents.py` (span por iteração do loop). Cada request do `/chat` é um trace; cada nó é um span filho. O `trace_id` já existente no gateway vira o `trace_id` do Langfuse.
+- **Custo por request como métrica de produto**: derive dos tokens rastreados. Tokens in/out × custo por token (mesmo on-premise: tempo de GPU tem preço). Agregar por usuário/dia/domínio. Em API isso é fatura; em local é dimensionamento de capacidade. Dashboard do Langfuse já mostra isso nativamente.
+- **Eval scoring no Langfuse**: vincular resultados dos evals (routing, domains, injection) aos traces — permite correlacionar score com prompt/modelo/config sem grep manual.
+
+### Human-in-the-Loop (HITL) — implementar segundo
+
+Agente que executa ação destrutiva sem confirmação humana é risco inaceitável. Um agent convencido por alucinação ou injection cria registro real, liquida conta, aprova reembolso — sem volta.
+
+- **Mecanismo**: LangGraph `interrupt()` nativo. Antes de qualquer tool que faça POST/PUT/DELETE em microsserviço, o grafo pausa e emite evento SSE `confirm` com preview da ação (tool, argumentos, domínio). Frontend mostra ao usuário; aprovação retoma o grafo, rejeição aborta com mensagem.
+- **Whitelist de tools auto-executáveis**: tools de leitura (GET/listagem) executam sem pausa. Tools de escrita (criar pedido, aprovar reembolso, reservar estoque) exigem confirmação. A whitelist é config, não hardcode — novas tools são restritivas por default.
+- **Timeout de confirmação**: se o usuário não responde em N minutos, o grafo aborta com mensagem clara (não fica pendurado).
+- **Auditoria**: toda confirmação/rejeição é logada (quem, quando, qual ação) — rastreável no Langfuse como evento do span.
+
+### Estado conversacional — implementar terceiro
+
+Sem estado, cada `/chat` é uma conversa nova. Usuário não pode dizer "e o estoque desse produto?" referindo-se ao contexto anterior.
+
+- **Mecanismo**: LangGraph checkpointer (SQLite para PoC, Postgres/Redis para produção). `thread_id` por sessão do frontend, propagado no POST `/chat`.
+- **Janela de história com teto**: manter últimas N mensagens + sumarização do excedente via LLM. História infinita = contexto estourado + custo crescente. Teto recomendado: 4096 tokens de história; excedente sumarizado em ~500 tokens.
+- **Limpeza**: TTL por thread (ex.: 24h sem atividade → purge). Sem TTL, checkpointer acumula estado indefinidamente.
+
+### Structured output — reforço
+
+JSON crítico (router) com schema enforcement nativo do serving (format/json_schema no Ollama, guided_json no vLLM, tool-use forçado em API) — não regex sobre texto livre. Parse + retry é fallback, não estratégia.
 
 ## Fase 7 (opcional) — Fine-tune por destilação (LoRA)
 
@@ -187,6 +211,8 @@ Só após baseline medido. Critério de adoção definido **antes** de treinar: 
 4. Grafo de orquestração + router com fallbacks e guards → eval de routing ≥90%.
 5. Hardening: injection eval 0 leaks, circuit breaker, timeouts de fan-out.
 6. Produção: SSE+heartbeat, tunnel, token, README com números.
+6.5. (Opcional) Roteamento semântico — só se LLM de routing for lento/caro.
+6.6. **Observabilidade LLM (Langfuse) → HITL → estado conversacional.** Não é opcional — sistema multi-agente sem tracing e sem gate humano não é production-grade.
 7. (Opcional) Destilação + LoRA com gates de adoção.
 
 Cada fase tem critério numérico de saída. Não avance com gate vermelho.

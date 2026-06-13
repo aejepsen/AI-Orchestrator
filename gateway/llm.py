@@ -78,8 +78,14 @@ class OllamaClient:
             self._keep_alive = keep_alive
         self._client = client or httpx.Client(timeout=timeout_s)
 
-    def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
+    def embed(self, texts: list[str], *, model: str, trace: Any = None) -> list[list[float]]:
         """Embeddings em lote via /api/embed (modelo dedicado, ex.: nomic-embed-text)."""
+        gen = None
+        if trace:
+            gen = trace.generation(
+                name="llm.embed", model=model,
+                input={"texts_count": len(texts)},
+            )
         payload = {"model": model, "input": texts, "keep_alive": self._keep_alive}
         try:
             response = self._client.post(f"{self._base_url}/api/embed", json=payload)
@@ -90,6 +96,8 @@ class OllamaClient:
         embeddings = data.get("embeddings")
         if not isinstance(embeddings, list) or len(embeddings) != len(texts):
             raise LLMError(f"Resposta de /api/embed malformada: {data!r}")
+        if gen:
+            gen.end(output={"embeddings_count": len(embeddings)})
         return embeddings
 
     def chat(
@@ -99,7 +107,15 @@ class OllamaClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.0,
         format: str | dict[str, Any] | None = None,
+        trace: Any = None,
     ) -> ChatResponse:
+        gen = None
+        if trace:
+            gen = trace.generation(
+                name="llm.chat", model=self._model,
+                input={"messages": messages, "tools": bool(tools)},
+                model_parameters={"temperature": temperature},
+            )
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
@@ -124,7 +140,11 @@ class OllamaClient:
         message = data.get("message")
         if not isinstance(message, dict):
             raise LLMError(f"Resposta do Ollama sem campo 'message': {data!r}")
+        response_content = (message.get("content") or "").strip()
+        raw_tool_calls = _parse_tool_calls(message.get("tool_calls") or [])
+        if gen:
+            gen.end(output={"content": response_content, "tool_calls": len(raw_tool_calls)})
         return ChatResponse(
-            content=(message.get("content") or "").strip(),
-            tool_calls=_parse_tool_calls(message.get("tool_calls") or []),
+            content=response_content,
+            tool_calls=raw_tool_calls,
         )

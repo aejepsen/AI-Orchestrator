@@ -3,3 +3,4 @@ fastapi>=0.115,<1
 uvicorn>=0.34,<1
 pydantic>=2.10,<3
 langgraph>=1.2,<2
+langfuse>=2,<3

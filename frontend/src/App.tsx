@@ -3,13 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentCard } from "./components/AgentCard";
 import { AgentSkeleton } from "./components/AgentSkeleton";
 import { Composer } from "./components/Composer";
+import { ConfirmCard } from "./components/ConfirmCard";
 import { Pipeline, type Stage } from "./components/Pipeline";
 import { RouteChips } from "./components/RouteChips";
 import { Unlock } from "./components/Unlock";
-import { ChatHttpError, streamChat, type RoutePlan } from "./lib/sse";
+import { ChatHttpError, resumeChat, streamChat, type RoutePlan } from "./lib/sse";
 
 const TOKEN_KEY = "aio:access-token";
 const UNLOCKED_KEY = "aio:unlocked";
+const THREAD_KEY = "aio:thread-id";
 
 /** Sanitize é local e rápido; depois disso o gateway está roteando. */
 const ROUTE_STAGE_DELAY_MS = 600;
@@ -20,6 +22,7 @@ type ItemBody =
   | { kind: "agent"; domain: string; answer: string }
   | { kind: "clarification"; text: string }
   | { kind: "final"; text: string }
+  | { kind: "confirm"; domains: string[]; plan: string; threadId: string }
   | { kind: "aborted" }
   | { kind: "error"; text: string };
 
@@ -29,6 +32,14 @@ let seq = 0;
 const nextId = () => `item-${++seq}`;
 
 export default function App() {
+  const [threadId, setThreadId] = useState(() => {
+    let tid = localStorage.getItem(THREAD_KEY);
+    if (!tid) {
+      tid = crypto.randomUUID();
+      localStorage.setItem(THREAD_KEY, tid);
+    }
+    return tid;
+  });
   const [unlocked, setUnlocked] = useState(() => localStorage.getItem(UNLOCKED_KEY) === "1");
   const [authError, setAuthError] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -107,12 +118,22 @@ export default function App() {
             case "final":
               append({ kind: "final", text: event.data.answer });
               break;
+            case "confirm":
+              setStage("confirm");
+              append({
+                kind: "confirm",
+                domains: event.data.domains,
+                plan: event.data.plan,
+                threadId: event.data.thread_id,
+              });
+              break;
             case "error":
               append({ kind: "error", text: event.data.detail ?? "Falha não tratada no grafo." });
               break;
           }
         },
         controller.signal,
+        threadId,
       );
     } catch (err) {
       if (controller.signal.aborted) {
@@ -136,6 +157,82 @@ export default function App() {
     }
   }
 
+  async function handleResume(confirmThreadId: string, approved: boolean) {
+    setBusy(true);
+    setStage(approved ? "agents" : "synthesize");
+    setStartedAt(Date.now());
+    setPendingAgents([]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let expectedAgents = 0;
+    let finishedAgents = 0;
+
+    try {
+      await resumeChat(
+        confirmThreadId,
+        approved,
+        localStorage.getItem(TOKEN_KEY),
+        (event) => {
+          switch (event.type) {
+            case "route":
+              expectedAgents = event.data.domains.length;
+              if (event.data.clarification) {
+                setStage("synthesize");
+                append({ kind: "clarification", text: event.data.clarification });
+              } else {
+                setStage("agents");
+                setPendingAgents(event.data.domains);
+                append({ kind: "route", route: event.data });
+              }
+              break;
+            case "agent":
+              finishedAgents += 1;
+              setPendingAgents((prev) => prev.filter((d) => d !== event.data.domain));
+              if (expectedAgents > 0 && finishedAgents >= expectedAgents) setStage("synthesize");
+              append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
+              break;
+            case "final":
+              append({ kind: "final", text: event.data.answer });
+              break;
+            case "confirm":
+              setStage("confirm");
+              append({
+                kind: "confirm",
+                domains: event.data.domains,
+                plan: event.data.plan,
+                threadId: event.data.thread_id,
+              });
+              break;
+            case "error":
+              append({ kind: "error", text: event.data.detail ?? "Falha não tratada no grafo." });
+              break;
+          }
+        },
+        controller.signal,
+      );
+    } catch (err) {
+      if (controller.signal.aborted) {
+        append({ kind: "aborted" });
+      } else if (err instanceof ChatHttpError && err.status === 401) {
+        localStorage.removeItem(UNLOCKED_KEY);
+        setAuthError("Token recusado pelo gateway. Verifique e tente de novo.");
+        setUnlocked(false);
+      } else if (err instanceof ChatHttpError && err.status === 429) {
+        append({ kind: "error", text: "Gateway ocupado — limite de consultas atingido. Aguarde alguns minutos." });
+      } else if (err instanceof ChatHttpError) {
+        append({ kind: "error", text: (err as ChatHttpError).message });
+      } else {
+        append({ kind: "error", text: "Conexão com o gateway interrompida. Tente novamente." });
+      }
+    } finally {
+      abortRef.current = null;
+      setPendingAgents([]);
+      setBusy(false);
+    }
+  }
+
   if (!unlocked) return <Unlock error={authError} onUnlock={unlock} />;
 
   return (
@@ -144,14 +241,27 @@ export default function App() {
         <div className="mx-auto flex w-full max-w-3xl items-baseline gap-3 px-4 py-4 sm:px-6">
           <h1 className="text-sm font-semibold tracking-tight">AI-Orchestrator</h1>
           <p className="text-xs text-faint">Gateway multi-agente on-premise</p>
-          <a
-            href="/apresentacao/"
-            target="_blank"
-            rel="noopener"
-            className="ml-auto self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
-          >
-            Apresentação ↗
-          </a>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => {
+                const newTid = crypto.randomUUID();
+                localStorage.setItem(THREAD_KEY, newTid);
+                setThreadId(newTid);
+                setItems([]);
+              }}
+              className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+            >
+              Nova conversa
+            </button>
+            <a
+              href="/apresentacao/"
+              target="_blank"
+              rel="noopener"
+              className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+            >
+              Apresentação ↗
+            </a>
+          </div>
         </div>
       </header>
 
@@ -198,6 +308,17 @@ export default function App() {
                       {item.text}
                     </p>
                   </div>
+                );
+              case "confirm":
+                return (
+                  <ConfirmCard
+                    key={item.id}
+                    domains={item.domains}
+                    plan={item.plan}
+                    disabled={busy}
+                    onApprove={() => handleResume(item.threadId, true)}
+                    onReject={() => handleResume(item.threadId, false)}
+                  />
                 );
               case "aborted":
                 return (

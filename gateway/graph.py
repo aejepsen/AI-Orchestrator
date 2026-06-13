@@ -1,23 +1,25 @@
 """Grafo do orquestrador (LangGraph StateGraph).
 
 Topologia: sanitize → classify → (clarification? → respond_clarification)
-                                  senão → dispatch (fan-out paralelo) → synthesize.
+                                  senão → confirm_dispatch → dispatch → synthesize.
 
 Decisões:
-- PoC stateless por request: compile sem checkpointer persistente.
+- MemorySaver como checkpointer in-memory (produção: SqliteSaver ou PostgresSaver).
 - `dispatch` paraleliza subagentes com ThreadPoolExecutor: o Ollama serializa
   de fato as gerações, mas o paralelismo vale para os microsserviços e mantém
   o desenho fan-out/fan-in correto para quando houver mais capacidade.
 - `synthesize` com 1 domínio devolve a resposta do agente direto (zero
   chamada extra ao LLM); >1 domínio o MoE sintetiza fundado só nas respostas.
-- Observabilidade (base da Fase 5): logger "gateway", um log JSON por nó com
-  trace_id, nó, latência ms e domínios.
+- Observabilidade Langfuse: trace por request, span por nó, generation por LLM call.
+- HITL: confirm_dispatch pausa para aprovação humana via interrupt().
+- Estado conversacional: history acumulado via thread_id + checkpointer.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -26,14 +28,18 @@ from typing import Any, Callable, TypedDict
 from langgraph.graph import END, StateGraph
 
 from gateway.agents import DomainAgentRunner
+from gateway.config import Settings
 from gateway.llm import OllamaClient
 from gateway.router import classify_intent
 from gateway.sanitize import sanitize_question
+from gateway.tracing import TraceHandle, Tracer
 
 logger = logging.getLogger("gateway")
 
 # Callback opcional invocado a cada subagente concluído: (domain, answer).
 AgentCallback = Callable[[str, str], None]
+# Callback opcional invocado quando confirmação é necessária: (domains, plan).
+ConfirmCallback = Callable[[list[str], str], None]
 
 
 class GraphState(TypedDict, total=False):
@@ -44,8 +50,10 @@ class GraphState(TypedDict, total=False):
     final_answer: str
     trace_id: str
     error: str | None
-    # Canal interno (não serializado): callback por subagente concluído.
-    _on_agent: Any
+    # Estado conversacional (multi-turn).
+    history: list[dict[str, str]]  # [{"role": "user", "content": ...}, ...]
+    # HITL
+    pending_confirmation: dict[str, Any] | None
 
 
 _SYNTH_SYSTEM = """Você é o orquestrador de um sistema corporativo multi-agente.
@@ -77,6 +85,8 @@ class GatewayGraph:
         runner: DomainAgentRunner,
         llm: OllamaClient | None = None,
         semantic: "SemanticRouter | None" = None,
+        tracer: Tracer | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._runner = runner
         self._llm = llm or OllamaClient(
@@ -85,56 +95,125 @@ class GatewayGraph:
             timeout_s=runner.settings.llm_timeout_s,
             keep_alive=runner.settings.keep_alive,
         )
-        settings = getattr(runner, "settings", None)
-        if semantic is None and settings is not None and settings.semantic_enabled:
+        self._settings = settings or getattr(runner, "settings", None)
+        if semantic is None and self._settings is not None and self._settings.semantic_enabled:
             from gateway.semantic_router import SemanticRouter
 
             semantic = SemanticRouter(
-                settings.qdrant_url,
+                self._settings.qdrant_url,
                 self._llm,
-                embed_model=settings.embed_model,
-                examples_path=settings.routing_examples_path,
-                threshold=settings.semantic_threshold,
-                top_k=settings.semantic_top_k,
+                embed_model=self._settings.embed_model,
+                examples_path=self._settings.routing_examples_path,
+                threshold=self._settings.semantic_threshold,
+                top_k=self._settings.semantic_top_k,
             )
         self._semantic = semantic
+        self._tracer = tracer
+
+        # Checkpointer in-memory (produção: usar SqliteSaver ou PostgresSaver).
+        # MemorySaver vem incluso no langgraph — zero dependências extras.
+        try:
+            from langgraph.checkpoint.memory import MemorySaver
+
+            self._checkpointer = MemorySaver()
+        except ImportError:
+            self._checkpointer = None
+
         self._compiled = self._build()
+
+        # Thread-local: callbacks e trace não vão pro state (checkpointer não serializa lambdas).
+        self._local = threading.local()
 
     # -- nós -----------------------------------------------------------------
 
     def _sanitize(self, state: GraphState) -> GraphState:
         started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="sanitize") if trace else None
         update: GraphState = {"sanitized": sanitize_question(state["question"])}
         if not state.get("trace_id"):
             update["trace_id"] = str(uuid.uuid4())
         _log_node({**state, **update}, "sanitize", started, domains=[])
+        if span:
+            span.end()
         return update
 
     def _classify(self, state: GraphState) -> GraphState:
         started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="classify") if trace else None
         route = classify_intent(state["sanitized"], self._llm, semantic=self._semantic)
         update: GraphState = {"route": route.model_dump()}
         _log_node({**state, **update}, "classify", started)
+        if span:
+            span.end()
         return update
 
     def _respond_clarification(self, state: GraphState) -> GraphState:
         started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="respond_clarification") if trace else None
+        answer = state["route"].get("clarification") or "Pode esclarecer sua pergunta?"
         update: GraphState = {
-            "final_answer": state["route"].get("clarification") or "Pode esclarecer sua pergunta?",
+            "final_answer": answer,
             "agent_results": {},
         }
         _log_node(state, "respond_clarification", started, domains=[])
+        if span:
+            span.end()
         return update
+
+    def _confirm_dispatch(self, state: GraphState) -> GraphState:
+        """Pausa para confirmação humana antes de executar agentes.
+
+        Só ativa interrupt() quando há callback de confirmação (on_confirm).
+        Sem callback (testes, evals, modo automático): auto-aprova.
+        """
+        on_confirm: ConfirmCallback | None = getattr(self._local, "on_confirm", None)
+
+        # Sem callback = modo automático: prossegue direto pro dispatch.
+        if not on_confirm:
+            return {}
+
+        route = state["route"]
+        domains = route.get("domains", [])
+        plan = route.get("plan", "")
+
+        # Notifica frontend sobre confirmação pendente.
+        on_confirm(domains, plan)
+
+        # Tenta usar interrupt() do LangGraph para HITL.
+        try:
+            from langgraph.types import interrupt
+
+            decision = interrupt({
+                "type": "confirm_dispatch",
+                "domains": domains,
+                "plan": plan,
+                "question": state["sanitized"],
+            })
+
+            if not decision.get("approved", False):
+                return {
+                    "final_answer": "Operação cancelada pelo usuário.",
+                    "agent_results": {},
+                }
+        except ImportError:
+            pass
+
+        return {}
 
     def _dispatch(self, state: GraphState) -> GraphState:
         started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="dispatch") if trace else None
         route = state["route"]
         domains: list[str] = route.get("domains", [])
         plan = route.get("plan", "")
         task = state["sanitized"]
         if plan:
             task = f"{task}\n\n(Nota do orquestrador: {plan})"
-        on_agent: AgentCallback | None = state.get("_on_agent")  # type: ignore[typeddict-item]
+        on_agent: AgentCallback | None = getattr(self._local, "on_agent", None)
 
         def run_one(domain: str) -> tuple[str, dict[str, Any]]:
             try:
@@ -152,10 +231,14 @@ class GatewayGraph:
             with ThreadPoolExecutor(max_workers=len(domains)) as pool:
                 results = dict(pool.map(run_one, domains))
         _log_node(state, "dispatch", started, domains=domains)
+        if span:
+            span.end()
         return {"agent_results": results}
 
     def _synthesize(self, state: GraphState) -> GraphState:
         started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="synthesize") if trace else None
         results = state["agent_results"]
         domains = state["route"].get("domains", [])
         if len(domains) == 1:
@@ -172,19 +255,36 @@ class GatewayGraph:
                             f"<agent_answers>\n{blocks}\n</agent_answers>"
                         ),
                     },
-                ]
+                ],
+                trace=trace,
             )
             answer = response.content
+
+        # Acumula histórico conversacional.
+        history = list(state.get("history") or [])
+        history.append({"role": "user", "content": state.get("question", state.get("sanitized", ""))})
+        history.append({"role": "assistant", "content": answer})
+
         _log_node(state, "synthesize", started, domains=domains)
-        return {"final_answer": answer}
+        if span:
+            span.end()
+        return {"final_answer": answer, "history": history}
 
     # -- montagem ------------------------------------------------------------
+
+    @staticmethod
+    def _route_after_confirm(state: GraphState) -> str:
+        """Após confirm_dispatch: se rejeitado (final_answer existe), vai pra END."""
+        if state.get("final_answer"):
+            return "end"
+        return "dispatch"
 
     def _build(self):
         graph = StateGraph(GraphState)
         graph.add_node("sanitize", self._sanitize)
         graph.add_node("classify", self._classify)
         graph.add_node("respond_clarification", self._respond_clarification)
+        graph.add_node("confirm_dispatch", self._confirm_dispatch)
         graph.add_node("dispatch", self._dispatch)
         graph.add_node("synthesize", self._synthesize)
 
@@ -192,13 +292,19 @@ class GatewayGraph:
         graph.add_edge("sanitize", "classify")
         graph.add_conditional_edges(
             "classify",
-            lambda state: "respond_clarification" if state["route"].get("clarification") else "dispatch",
-            {"respond_clarification": "respond_clarification", "dispatch": "dispatch"},
+            lambda state: "respond_clarification" if state["route"].get("clarification") else "confirm_dispatch",
+            {"respond_clarification": "respond_clarification", "confirm_dispatch": "confirm_dispatch"},
+        )
+        graph.add_conditional_edges(
+            "confirm_dispatch",
+            self._route_after_confirm,
+            {"dispatch": "dispatch", "end": END},
         )
         graph.add_edge("dispatch", "synthesize")
         graph.add_edge("respond_clarification", END)
         graph.add_edge("synthesize", END)
-        return graph.compile()
+
+        return graph.compile(checkpointer=self._checkpointer)
 
     # -- API -----------------------------------------------------------------
 
@@ -208,12 +314,28 @@ class GatewayGraph:
         *,
         on_agent: AgentCallback | None = None,
         trace_id: str | None = None,
+        thread_id: str | None = None,
+        on_confirm: ConfirmCallback | None = None,
     ) -> GraphState:
         """Executa o grafo para uma pergunta; retorna o estado final."""
-        state: dict[str, Any] = {"question": question, "trace_id": trace_id or str(uuid.uuid4())}
-        if on_agent:
-            state["_on_agent"] = on_agent
-        return self._compiled.invoke(state)
+        tid = trace_id or str(uuid.uuid4())
+        state: dict[str, Any] = {"question": question, "trace_id": tid}
+
+        # Callbacks e trace em thread-local (não serializáveis pelo checkpointer).
+        self._local.on_agent = on_agent
+        self._local.on_confirm = on_confirm
+        self._local.trace = self._tracer.trace(trace_id=tid, name="chat") if self._tracer else None
+
+        config: dict[str, Any] | None = None
+        if self._checkpointer:
+            config = {"configurable": {"thread_id": thread_id or str(uuid.uuid4())}}
+
+        result = self._compiled.invoke(state, config=config)
+
+        if self._tracer:
+            self._tracer.flush()
+
+        return result
 
     def stream(
         self,
@@ -221,9 +343,22 @@ class GatewayGraph:
         *,
         on_agent: AgentCallback | None = None,
         trace_id: str | None = None,
+        thread_id: str | None = None,
+        on_confirm: ConfirmCallback | None = None,
     ):
         """Itera updates por nó (stream_mode='updates') — base do SSE."""
-        state: dict[str, Any] = {"question": question, "trace_id": trace_id or str(uuid.uuid4())}
-        if on_agent:
-            state["_on_agent"] = on_agent
-        yield from self._compiled.stream(state, stream_mode="updates")
+        tid = trace_id or str(uuid.uuid4())
+        state: dict[str, Any] = {"question": question, "trace_id": tid}
+
+        self._local.on_agent = on_agent
+        self._local.on_confirm = on_confirm
+        self._local.trace = self._tracer.trace(trace_id=tid, name="chat") if self._tracer else None
+
+        config: dict[str, Any] | None = None
+        if self._checkpointer:
+            config = {"configurable": {"thread_id": thread_id or str(uuid.uuid4())}}
+
+        yield from self._compiled.stream(state, config=config, stream_mode="updates")
+
+        if self._tracer:
+            self._tracer.flush()

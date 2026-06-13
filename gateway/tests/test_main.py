@@ -17,7 +17,7 @@ class FakeGraph:
         self._clarification = clarification
         self._boom = boom
 
-    def stream(self, question: str, *, trace_id: str | None = None, on_agent=None):
+    def stream(self, question: str, *, trace_id: str | None = None, on_agent=None, thread_id: str | None = None, on_confirm=None):
         if self._boom:
             raise RuntimeError("grafo explodiu")
         yield {"sanitize": {"sanitized": question}}
@@ -27,6 +27,7 @@ class FakeGraph:
             return
         route = {"domains": ["vendas", "estoque"], "plan": "p", "clarification": None}
         yield {"classify": {"route": route}}
+        yield {"confirm_dispatch": {}}
         if on_agent:
             on_agent("vendas", "Desconto ok.")
             on_agent("estoque", "Saldo ok.")

@@ -3,8 +3,11 @@
 `POST /chat {question}` → text/event-stream com eventos:
 - `route`  — JSON do RoutePlan assim que o classificador conclui;
 - `agent`  — um por domínio concluído: {domain, answer};
+- `confirm` — pendente de confirmação humana: {domains, plan, thread_id};
 - `final`  — {answer, trace_id};
 - `error`  — {detail, trace_id} em falha não tratada do grafo.
+
+`POST /chat/{thread_id}/resume {approved}` → retoma grafo após HITL.
 
 O grafo é síncrono (LLM + microsserviços via httpx sync); roda em
 run_in_executor e os eventos fluem por asyncio.Queue conforme cada nó
@@ -27,8 +30,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from gateway.agents import DomainAgentRunner
+from gateway.config import Settings, load_settings
 from gateway.graph import GatewayGraph
 from gateway.security import AccessTokenGuard, RateLimiter, client_ip
+from gateway.tracing import Tracer
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -37,6 +42,11 @@ _SENTINEL = ("__done__", None)
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
+    thread_id: str | None = Field(default=None, max_length=64)
+
+
+class ResumeRequest(BaseModel):
+    approved: bool = True
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -51,8 +61,8 @@ def create_app(
     access_guard: AccessTokenGuard | None = None,
     rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="AI-Orchestrator Gateway", version="0.4.0")
-    factory = graph_factory or (lambda: GatewayGraph(DomainAgentRunner()))
+    app = FastAPI(title="AI-Orchestrator Gateway", version="0.5.0")
+    factory = graph_factory or (lambda: _default_graph_factory())
     guard = access_guard or AccessTokenGuard()
     limiter = rate_limiter or RateLimiter()
 
@@ -83,6 +93,7 @@ def create_app(
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue()
         trace_id = str(uuid.uuid4())
+        tid = body.thread_id or str(uuid.uuid4())
 
         def emit(event: str, data: dict[str, Any] | None) -> None:
             loop.call_soon_threadsafe(queue.put_nowait, (event, data))
@@ -93,12 +104,18 @@ def create_app(
                 stream = graph.stream(
                     body.question,
                     trace_id=trace_id,
+                    thread_id=tid,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),
+                    on_confirm=lambda domains, plan: emit("confirm", {"domains": domains, "plan": plan, "thread_id": tid}),
                 )
                 for update in stream:
                     for node, payload in update.items():
                         if node == "classify":
                             emit("route", payload["route"])
+                        elif node == "confirm_dispatch":
+                            # Se rejeitado, final_answer já está no payload.
+                            if "final_answer" in payload:
+                                emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
                         elif node in ("synthesize", "respond_clarification"):
                             emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
             except Exception as exc:  # noqa: BLE001 — erro vira evento SSE, não 500 mudo
@@ -125,12 +142,78 @@ def create_app(
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+    @app.post("/chat/{thread_id}/resume", response_model=None)
+    async def resume_chat(thread_id: str, body: ResumeRequest, http_request: Request) -> StreamingResponse | JSONResponse:
+        if not guard.allows(http_request.headers.get("x-access-token")):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "detail": "Token de acesso ausente ou inválido."},
+            )
+        fallback_ip = http_request.client.host if http_request.client else "unknown"
+        if not limiter.allow(client_ip(http_request.headers, fallback_ip)):
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limited", "detail": "Limite de requisições por hora atingido."},
+            )
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue()
+        trace_id = str(uuid.uuid4())
+
+        def emit(event: str, data: dict[str, Any] | None) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, (event, data))
+
+        def worker() -> None:
+            try:
+                from langgraph.types import Command
+
+                graph = get_graph()
+                config = {"configurable": {"thread_id": thread_id}}
+                stream = graph._compiled.stream(
+                    Command(resume={"approved": body.approved}),
+                    config=config,
+                    stream_mode="updates",
+                )
+                for update in stream:
+                    for node, payload in update.items():
+                        if node in ("synthesize", "respond_clarification", "confirm_dispatch"):
+                            if "final_answer" in payload:
+                                emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
+            except Exception as exc:  # noqa: BLE001
+                emit("error", {"detail": str(exc), "trace_id": trace_id})
+            finally:
+                emit(*_SENTINEL)
+
+        future = loop.run_in_executor(None, worker)
+
+        async def event_stream():
+            while True:
+                try:
+                    event, data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if (event, data) == _SENTINEL:
+                    break
+                yield _sse(event, data or {})
+            await future
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
     # Frontend buildado (Vite) servido pelo próprio gateway. Montado por último:
     # /health e /chat têm precedência; html=True serve index.html na raiz.
     if _FRONTEND_DIST.is_dir():
         app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
 
     return app
+
+
+def _default_graph_factory() -> GatewayGraph:
+    """Factory padrão: cria o grafo com tracer Langfuse e settings do ambiente."""
+    settings = load_settings()
+    tracer = Tracer(settings)
+    runner = DomainAgentRunner()
+    return GatewayGraph(runner, tracer=tracer, settings=settings)
 
 
 app = create_app()

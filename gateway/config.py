@@ -51,6 +51,15 @@ class Settings:
     routing_examples_path: str = field(
         default_factory=lambda: os.environ.get("ROUTING_EXAMPLES_PATH", "evals/golden_routing.jsonl")
     )
+    # Langfuse (observabilidade LLM). Desabilita com LANGFUSE_ENABLED=0.
+    langfuse_enabled: bool = field(
+        default_factory=lambda: os.environ.get("LANGFUSE_ENABLED", "1") not in ("0", "false", "False")
+    )
+    langfuse_host: str = field(default_factory=lambda: os.environ.get("LANGFUSE_HOST", "http://localhost:3100"))
+    langfuse_public_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-local"))
+    langfuse_secret_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-local"))
+    # Estado conversacional (multi-turn)
+    thread_db_path: str = field(default_factory=lambda: os.environ.get("THREAD_DB_PATH", "/tmp/threads.db"))
 
 
 def load_settings() -> Settings:

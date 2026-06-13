@@ -48,13 +48,27 @@ services:
       - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
       - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-1}
       - SEMANTIC_THRESHOLD=${SEMANTIC_THRESHOLD:-0.92}
+      # Langfuse: observabilidade LLM (traces, generations, scores).
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-pk-lf-local}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-sk-lf-local}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-1}
+      - THREAD_DB_PATH=/tmp/threads.db
     depends_on:
-      - ollama
-      - qdrant
-      - financas
-      - rh
-      - estoque
-      - vendas
+      ollama:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      financas:
+        condition: service_started
+      rh:
+        condition: service_started
+      estoque:
+        condition: service_started
+      vendas:
+        condition: service_started
+      langfuse:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
       interval: 30s
@@ -154,6 +168,44 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Langfuse: observabilidade LLM (traces, generations, scores)
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: ai-orchestrator-langfuse-db
+    environment:
+      - POSTGRES_DB=langfuse
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=${LANGFUSE_DB_PASSWORD:-langfuse-local}
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: ai-orchestrator-langfuse
+    ports:
+      - "127.0.0.1:3100:3000"
+    environment:
+      - DATABASE_URL=postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse-local}@langfuse-db:5432/langfuse
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-mysecret-change-in-production}
+      - SALT=${LANGFUSE_SALT:-mysalt-change-in-production}
+      - NEXTAUTH_URL=http://localhost:3100
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/public/health || exit 1"]
+      interval: 30s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   # Exposição pública via Cloudflare Tunnel (suasalada.com.br).
   # Só sobe com o profile "public": docker compose --profile public up -d
   cloudflared:
@@ -175,3 +227,4 @@ volumes:
   rh_data:
   estoque_data:
   vendas_data:
+  langfuse_db_data:

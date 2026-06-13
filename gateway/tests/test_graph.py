@@ -15,7 +15,7 @@ class FakeLLM:
         self._contents = list(contents)
         self.calls: list[dict[str, Any]] = []
 
-    def chat(self, messages, *, tools=None, temperature=0.0, format=None) -> ChatResponse:
+    def chat(self, messages, *, tools=None, temperature=0.0, format=None, trace=None) -> ChatResponse:
         self.calls.append({"messages": list(messages), "format": format})
         return ChatResponse(content=self._contents.pop(0))
 
@@ -148,4 +148,4 @@ def test_stream_emite_updates_por_no():
 
     nodes = [node for update in graph.stream("crie o pedido") for node in update]
 
-    assert nodes == ["sanitize", "classify", "dispatch", "synthesize"]
+    assert nodes == ["sanitize", "classify", "confirm_dispatch", "dispatch", "synthesize"]

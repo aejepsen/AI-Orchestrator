@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
-export type Stage = "sanitize" | "route" | "agents" | "synthesize";
+export type Stage = "sanitize" | "route" | "confirm" | "agents" | "synthesize";
 
 const STAGES: { id: Stage; label: string }[] = [
   { id: "sanitize", label: "sanitize" },
   { id: "route", label: "roteamento" },
+  { id: "confirm", label: "confirmação" },
   { id: "agents", label: "agentes" },
   { id: "synthesize", label: "síntese" },
 ];

@@ -28,10 +28,17 @@ export interface ErrorPayload {
   trace_id?: string;
 }
 
+export interface ConfirmPayload {
+  domains: string[];
+  plan: string;
+  thread_id: string;
+}
+
 export type ChatEvent =
   | { type: "route"; data: RoutePlan }
   | { type: "agent"; data: AgentResult }
   | { type: "final"; data: FinalAnswer }
+  | { type: "confirm"; data: ConfirmPayload }
   | { type: "error"; data: ErrorPayload };
 
 export class ChatHttpError extends Error {
@@ -64,6 +71,7 @@ export async function streamChat(
   token: string | null,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
+  threadId?: string,
 ): Promise<void> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["X-Access-Token"] = token;
@@ -71,7 +79,7 @@ export async function streamChat(
   const response = await fetch("/chat", {
     method: "POST",
     headers,
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, thread_id: threadId || undefined }),
     signal,
   });
 
@@ -89,6 +97,47 @@ export async function streamChat(
   if (!response.body) throw new ChatHttpError(response.status, "Resposta sem corpo de streaming.");
 
   const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  await consumeSSE(response, onEvent);
+}
+
+export async function resumeChat(
+  threadId: string,
+  approved: boolean,
+  token: string | null,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["X-Access-Token"] = token;
+
+  const response = await fetch(`/chat/${threadId}/resume`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ approved }),
+    signal,
+  });
+
+  if (!response.ok) {
+    let detail = `Erro HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as ErrorPayload;
+      if (body.detail) detail = body.detail;
+    } catch {
+      // corpo não-JSON: mantém o detail genérico
+    }
+    throw new ChatHttpError(response.status, detail);
+  }
+
+  if (!response.body) throw new ChatHttpError(response.status, "Resposta sem corpo de streaming.");
+
+  await consumeSSE(response, onEvent);
+}
+
+async function consumeSSE(response: Response, onEvent: (event: ChatEvent) => void): Promise<void> {
+  const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 

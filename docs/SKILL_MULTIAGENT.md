@@ -209,7 +209,15 @@ Incidentes reais encontrados durante a implementacao. Documentados como regra pa
 
 7. **Case-sensitivity em filtros SQL com LLM tool-calling.** LLMs enviam parametros de filtro em lowercase (ex.: `department='vendas'`). Se a API/DB usa case-sensitive match (SQLite default), a query retorna vazio mesmo com dados existentes. Regra: todo filtro de texto em endpoints consumidos por agentes DEVE usar `COLLATE NOCASE` (SQLite) ou `ILIKE` (Postgres). LLM nao e confiavel para acertar capitalizacao. Onde aplicar: qualquer endpoint com parametro de filtro textual nos microsservicos (department, category, status, name, etc). Incidente real: `get_headcount(department='vendas')` retornava [] enquanto DB tinha 3 funcionarios em "Vendas" — agente concluia "nao ha funcionarios", resposta errada para pergunta simples.
 
-8. **5 findings criticos de seguranca corrigidos (Fase 6).** `ACCESS_TOKEN` default vazio abria `/chat` para o mundo — fix: fail-closed com flag `ALLOW_OPEN_ACCESS` explícita. `.dockerignore` ausente — `.env` vazava nas layers da imagem Docker. `/docs` e `/redoc` expostos em producao — desabilitados (`docs_url=None`). Stack traces expostos no SSE error — substituidos por mensagem generica com log interno. Containers root — verificado que Dockerfiles ja tinham `USER` nao-root. Regra: auditoria de seguranca ANTES do tunel publico, nao depois.
+8. **5 findings criticos de seguranca corrigidos (Fase 6).** `ACCESS_TOKEN` default vazio abria `/chat` para o mundo — fix: fail-closed com flag `ALLOW_OPEN_ACCESS` explícita. `.dockerignore` ausente — `.env` vazava nas layers da imagem Docker. `/docs` e `/redoc` expostos em producao — desabilitados (`docs_url=None`, `redoc_url=None`, `openapi_url=None`). Stack traces expostos no SSE error — substituidos por mensagem generica com log interno. Containers root — verificado que Dockerfiles ja tinham `USER` nao-root. Regra: auditoria de seguranca ANTES do tunel publico, nao depois.
+
+9. **CF-Connecting-IP para IP real.** Cloudflare seta header nao-spoofavel pelo cliente. Rate limiter usa fallback chain: `CF-Connecting-IP` → `X-Real-IP` → `X-Forwarded-For` → socket.
+
+10. **Request deadline 600 s.** `REQUEST_TIMEOUT_S` e independente do `LLM_TIMEOUT_S`. Heartbeat SSE (`: keepalive`) a cada 15 s — Cloudflare corta apos ~100 s sem bytes (erro 524). Pool dedicado (`MAX_GRAPH_WORKERS=4`) para execucao sincrona do grafo, nao compete com asyncio default pool.
+
+11. **Injection detection (14 patterns, log only).** `sanitize.py::flag_injection()` detecta padroes PT/EN de injection semantica (ex.: "ignore as instruções", "you are now", "act as", "system prompt", "reveal instructions"). Nao reescreve o texto — mutilar keywords destroi perguntas legitimas. Defesa ativa: system prompt + isolamento por tag + least-privilege de tools.
+
+12. **Anti-fabricacao no system prompt.** LLM inventa dados (nomes, salarios, datas, SKUs) se o prompt nao proibir explicitamente. Regra critica em `agents.py::_SYSTEM_PROMPT_TEMPLATE`: para write ops sem todos os campos obrigatorios fornecidos pelo usuario, o agente DEVE listar os campos e pedir os valores — nunca fabricar. Incidente real: sem a regra, agente criava funcionario com nome inventado ao receber "incluir um funcionario" sem detalhes.
 
 ## Fase 7 (opcional) — Fine-tune por destilação (LoRA)
 

@@ -68,10 +68,30 @@ Latências medidas (warm, RTX 3060 + split CPU)
 Segurança
 
 - **Sanitização no boundary** (`gateway/sanitize.py`): strip de tokens especiais ChatML (`<|...|>`) e wrapper tags antes de qualquer LLM.
+- **Semantic injection detection** (`gateway/sanitize.py`): 14 padrões regex (PT/EN) detectam tentativas de injection semântica ("ignore as instruções...", "you are now...", "act as...", "system prompt", etc.). **Log-only** — não reescreve o texto (mutilar keywords destrói perguntas legítimas); a defesa ativa é o system prompt + isolamento por tag + least-privilege.
 - **Router endurecido**: instruções injetadas ("ignore as instruções...", "agora você é...", falsa autoridade) não adicionam domínios à rota. 1º eval: 2/6 vazamentos de roteamento (zero tool-calls cross-domain — least-privilege segurou) → regra de segurança + exemplo adversário no prompt → **0/6**.
+- **Anti-fabricação no system prompt**: regra crítica proíbe o agente de fabricar dados em operações de escrita. Se o usuário não forneceu todos os campos obrigatórios, o agente lista os campos e pede ao usuário — nunca inventa nomes, salários, datas, quantidades ou IDs.
 - **Least-privilege por escopo**: cada subagente só enxerga as tools do seu domínio — mesmo "convencido", não tem como chamar outra API.
 - **API key interna** (`X-Internal-Key`, `hmac.compare_digest`): serviços recusam chamada que não venha do gateway (401).
+- **Fail-closed auth** (`gateway/security.py`): sem `ACCESS_TOKEN` configurado, `/chat` é bloqueado por padrão. Modo dev aberto requer `ALLOW_OPEN_ACCESS=1` explícito.
+- **Rate limiting por IP** (`RATE_LIMIT_PER_HOUR`, default 10): sliding window em memória por processo. **CF-Connecting-IP** como fonte confiável de IP real atrás do Cloudflare (não spoofável pelo cliente); fallback chain: `CF-Connecting-IP` → `X-Real-IP` → `X-Forwarded-For` → socket.
 - **Circuit breaker por domínio**: 3 falhas de transporte → OPEN 30 s → half-open. 4xx (regra de negócio) não conta como falha.
+- **Swagger/OpenAPI desabilitado em produção**: `docs_url=None`, `redoc_url=None`, `openapi_url=None` no gateway.
+- **Error sanitization**: stack traces nunca expostos no SSE — erros internos retornam mensagem genérica ("Erro interno. Tente novamente.") com log completo no servidor.
+- **`.dockerignore`** (root + services): `.env`, `__pycache__`, `.git` e outros artefatos excluídos das layers Docker.
+- **Dedicated thread pool** (`MAX_GRAPH_WORKERS=4`): execução síncrona do grafo roda em pool dedicado, não compete com o event loop asyncio.
+- **Request deadline** (`REQUEST_TIMEOUT_S=600`): timeout global por request SSE, independente do `LLM_TIMEOUT_S`. Heartbeat a cada 15 s mantém a conexão viva; excedido o deadline, retorna erro ao cliente.
+
+Endpoints dos microsserviços (CRUD completo)
+
+Todos os microsserviços usam FastAPI + Pydantic v2 + SQLite. Erros de regra de negócio retornam 422 `{error, detail, rule}`.
+
+| Serviço | Porta | Endpoints |
+|---------|-------|-----------|
+| **Finanças** | 8101 | `GET /accounts` (filtro por type/status), `GET /accounts/{id}`, `POST /accounts`, `PUT /accounts/{id}`, `DELETE /accounts/{id}` (só abertas), `POST /accounts/{id}/pay`, `POST /accounts/{id}/receive`, `GET /cashflow` (start/end) |
+| **RH** | 8102 | `GET /employees` (filtro por department, COLLATE NOCASE), `GET /employees/{id}`, `POST /employees`, `PUT /employees/{id}` (department/position/salary), `DELETE /employees/{id}`, `GET /employees/{id}/vacation-balance`, `POST /vacations`, `POST /reimbursements`, `GET /headcount` (filtro por department, COLLATE NOCASE) |
+| **Estoque** | 8103 | `GET /products` (filtro por category), `GET /products/{sku}`, `POST /products` (SKU único), `PUT /products/{sku}` (name/quantity/reorder_point), `DELETE /products/{sku}` (sem reservas ativas), `GET /reservations`, `POST /reservations`, `POST /reservations/{id}/release`, `GET /replenishment` |
+| **Vendas** | 8104 | `GET /orders`, `GET /orders/{id}`, `POST /orders` (validação de desconto por política), `PUT /orders/{id}`, `DELETE /orders/{id}`, `GET /orders/{id}/commission`, `GET /sellers`, `GET /sellers/{id}`, `POST /sellers`, `PUT /sellers/{id}`, `DELETE /sellers/{id}` |
 
 Observabilidade
 
@@ -133,15 +153,39 @@ Estrutura
 
 ```
 gateway/            # Experience Layer: graph (LangGraph), router (semântico→LLM→léxico), agents, sanitize, SSE
+  main.py           #   FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume
+  graph.py          #   LangGraph StateGraph: sanitize → classify → dispatch → synthesize
+  agents.py         #   loop de tool-calling por domínio + system prompt anti-fabricação
+  router.py         #   classify_intent: semântico → LLM → léxico
+  sanitize.py       #   boundary anti-injection (ChatML strip + 14 regex injection detection)
+  security.py       #   AccessTokenGuard (fail-closed) + RateLimiter + client_ip (CF-Connecting-IP)
+  config.py         #   Settings dataclass (todas as envs num lugar só)
+  llm.py            #   cliente Ollama (chat/embed, think detection)
+  tracing.py        #   Langfuse integration (trace/span/generation)
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
-services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas)
+services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas) — CRUD completo
+frontend/           # Chat single-page (Vite + React + Tailwind v4)
 evals/              # golden sets + gates (domains, routing, injection, demo)
 train/              # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
-docs/               # PLANO_LORA_9B.md (treino + resultados), diagramas
+docs/               # PLANO_LORA_9B.md (treino + resultados), SKILL_MULTIAGENT.md
 demo/               # transcripts gravados das 5 conversas
 PLANO_EXECUCAO.md   # plano por fase com as-built e números medidos
 PROPOSAL.md         # visão do padrão AI Gateway
 ```
+
+Gotchas documentados
+
+1. **`threading.local()` para callbacks.** Lambdas (`on_agent`, `on_confirm`, trace) movidos de GraphState para `threading.local()` — MemorySaver/checkpointer não serializa funções (TypeError no msgpack).
+2. **Estado residual entre turns.** Com checkpointer, `final_answer` do turn anterior persiste e engana conditional edges. Fix: `_sanitize` limpa campos de resultado a cada novo turn.
+3. **Null payload no interrupt.** `interrupt()` pode yieldar payloads `None` no stream. Guard: `if not payload: continue`.
+4. **Langfuse v2 (v3 requer ClickHouse).** Pin para `langfuse/langfuse:2`. Healthcheck: `node -e "require('http')..."`. `HOSTNAME=0.0.0.0` obrigatório (Next.js bind).
+5. **HITL desabilitado.** Sem detecção de write intent, `interrupt()` dispara para toda query (incluindo leituras). Auto-aprova sem callback até a detecção existir.
+6. **COLLATE NOCASE para case-sensitivity SQLite.** LLMs enviam parâmetros em lowercase; SQLite default é case-sensitive. Todo filtro textual nos microsserviços usa `COLLATE NOCASE`.
+7. **Fail-closed auth (`ALLOW_OPEN_ACCESS`).** Sem `ACCESS_TOKEN`, `/chat` é bloqueado. Modo dev aberto requer `ALLOW_OPEN_ACCESS=1` explícito.
+8. **CF-Connecting-IP para IP real.** Cloudflare seta este header (não spoofável). Fallback: `X-Real-IP` → `X-Forwarded-For` → socket.
+9. **Request deadline 600 s.** Timeout global por request SSE, independente do `LLM_TIMEOUT_S`. Heartbeat SSE a cada 15 s (Cloudflare corta após ~100 s sem bytes).
+10. **Injection detection (14 patterns, log only).** Detecção semântica de injection (PT/EN) via regex em `sanitize.py`. Não reescreve — defesa ativa é system prompt + isolamento por tag + least-privilege.
+11. **Anti-fabricação.** LLM inventa dados se o prompt não proibir explicitamente. Regra crítica no system prompt: para write ops sem todos os campos obrigatórios, listar campos e pedir ao usuário. Nunca fabricar nomes, salários, datas, quantidades.
 
 Backlog (fora do escopo da PoC)
 

@@ -27,22 +27,33 @@
 ```
 AI-Orchestrator/
 ├── PROPOSAL.md / PLANO_EXECUCAO.md
-├── docker-compose.yml            # ollama, gateway, 4 microsserviços
+├── docker-compose.yml            # ollama, gateway, 4 microsserviços, qdrant, langfuse
 ├── gateway/                      # Experience Layer
-│   ├── main.py                   # FastAPI: POST /chat (SSE)
-│   ├── graph.py                  # LangGraph: router → subagente → síntese
-│   ├── llm.py                    # clients Ollama (orquestrador + subagente)
-│   ├── sanitize.py               # boundary anti-injection
-│   └── tools/                    # tool registry gerado do OpenAPI
+│   ├── main.py                   # FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume
+│   ├── graph.py                  # LangGraph StateGraph: sanitize → classify → dispatch → synthesize
+│   ├── agents.py                 # loop tool-calling por domínio + system prompt anti-fabricação
+│   ├── router.py                 # classify_intent: semântico → LLM → léxico
+│   ├── llm.py                    # cliente Ollama (chat/embed, think detection)
+│   ├── sanitize.py               # boundary anti-injection + 14 regex injection detection (log only)
+│   ├── security.py               # AccessTokenGuard (fail-closed) + RateLimiter + CF-Connecting-IP
+│   ├── config.py                 # Settings dataclass (todas as envs)
+│   ├── tracing.py                # Langfuse integration (trace/span/generation)
+│   └── tools/                    # registry OpenAPI→tools + circuit breaker
 ├── services/
-│   ├── financas/  (main.py, rules.py, db.py, seed.py, tests/)
+│   ├── financas/  (main.py, rules.py, db.py, seed.py, tests/) — CRUD completo
 │   ├── rh/        ...
 │   ├── estoque/   ...
 │   └── vendas/    ...
+├── frontend/                     # Chat single-page (Vite + React + Tailwind v4)
 ├── evals/
 │   ├── golden_routing.jsonl      # intenção → domínio esperado
-│   └── eval_routing.py           # gate de acurácia de roteamento
-└── tests/                        # integração end-to-end
+│   ├── eval_routing.py           # gate de acurácia de roteamento
+│   ├── eval_domains.py           # gate de domínio ≥80%
+│   ├── eval_injection.py         # gate 0 leaks
+│   └── demo.py                   # 5 conversas gravadas
+├── train/                        # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
+├── docs/                         # PLANO_LORA_9B.md, SKILL_MULTIAGENT.md
+└── demo/                         # transcripts gravados
 ```
 
 ---
@@ -61,11 +72,11 @@ AI-Orchestrator/
 
 ### Fase 1 — Microsserviços determinísticos (sem IA) — ✅ EXECUTADA 2026-06-10
 > As-built: 4 serviços em `services/` (portas 8101–8104, Dockerfile único por ARG, SQLite por serviço em volume próprio, envelope de erro `{error, detail, rule}` em `services/common.py`). **89 testes passando**, ruff limpo, 4 containers Up com smoke nos endpoints de negócio. Liberação de reserva via `POST /reservations/{id}/release` (histórico preservado, tool-friendly); cashflow projetado por `due_date`.
-1. 4 serviços FastAPI com regras puras e dados seed realistas:
-   - **Finanças:** fluxo de caixa, contas a pagar/receber, aprovação por alçada.
-   - **RH:** férias (regra CLT simplificada), headcount, reembolso.
-   - **Estoque:** saldo, ponto de reposição, reserva.
-   - **Vendas:** pedidos, desconto por política, comissão.
+1. 4 serviços FastAPI com regras puras, dados seed realistas e **CRUD completo**:
+   - **Finanças (:8101):** `GET/POST /accounts`, `GET/PUT/DELETE /accounts/{id}`, `POST /accounts/{id}/pay`, `POST /accounts/{id}/receive`, `GET /cashflow` (start/end). Regras: alçada de aprovação, só abertas aceitam exclusão/liquidação.
+   - **RH (:8102):** `GET/POST /employees`, `GET/PUT/DELETE /employees/{id}`, `GET /employees/{id}/vacation-balance`, `POST /vacations`, `POST /reimbursements`, `GET /headcount`. Regras: férias CLT simplificada, limite de reembolso. Filtros com `COLLATE NOCASE`.
+   - **Estoque (:8103):** `GET/POST /products`, `GET/PUT/DELETE /products/{sku}`, `GET/POST /reservations`, `POST /reservations/{id}/release`, `GET /replenishment`. Regras: SKU único, não exclui com reservas ativas.
+   - **Vendas (:8104):** `GET/POST /orders`, `GET/PUT/DELETE /orders/{id}`, `GET /orders/{id}/commission`, `GET/POST /sellers`, `GET/PUT/DELETE /sellers/{id}`. Regras: desconto por política, comissão por faixa.
 2. Pydantic em todas as entradas/saídas; erros de negócio = 422 com payload estruturado (vira feedback legível pro agente).
 3. Testes unitários das regras (pytest) — **antes** de qualquer IA tocar nelas.
 
@@ -86,11 +97,14 @@ AI-Orchestrator/
 ### Fase 4 — Segurança e resiliência — ✅ EXECUTADA 2026-06-10 (injection gate PASS 0/6 leaks)
 > As-built: API key interna `X-Internal-Key` (`services/common.py::register_internal_auth`, `hmac.compare_digest`, isenta /health /openapi.json /docs; modo aberto com warning sem env), circuit breaker por domínio (`gateway/tools/circuit.py`: 3 falhas de transporte → OPEN 30 s → half-open; 4xx não conta), registry envia key em toda chamada, compose injeta `INTERNAL_API_KEY`. **182 testes passando**, ruff limpo; validado live: 401 sem key, 200 com key. Sanitização boundary já entregue na Fase 3.
 > **Injection eval** (`evals/eval_injection.py`, 6 casos adversários: "ignore as instruções", role-swap, token ChatML, falsa autoridade, wrapper breakout): 1º run **FAIL 2/6** — router roteava a instrução injetada como intenção legítima (vazamento só de roteamento; **zero tool-calls cross-domain** — least-privilege por escopo segurou). Fix: regra de SEGURANÇA + exemplo adversário no system prompt do router → **PASS 0/6 leaks** (`evals/results/injection_20260610_145651.json`). Gotcha do eval: rodar do host exige `INTERNAL_API_KEY` no env, senão agentes levam 401 e o teste enfraquece.
+> **Security hardening (Fase 6).** `.dockerignore` (root + services); Swagger/OpenAPI desabilitado em produção (`docs_url=None`, `redoc_url=None`, `openapi_url=None`); error sanitization (stack traces nunca expostos no SSE); fail-closed auth (`ALLOW_OPEN_ACCESS`); rate limiting por IP (sliding window, `RATE_LIMIT_PER_HOUR`); semantic injection detection (14 patterns PT/EN, log only); CF-Connecting-IP trust para IP real; dedicated thread pool (`MAX_GRAPH_WORKERS=4`); request deadline (`REQUEST_TIMEOUT_S=600`).
 > **Demo SSE end-to-end** (gateway :8100, "pedido de 100 un. TEC-MEC-005 com 15% de desconto"): route 3 domínios em 47 s, fan-out paralelo, vendas recusa 15%>10% (regra da API), estoque confirma 100 un., síntese correta — 480 s total. Achado: fan-out de 3 agentes enfileira no MoE único (Ollama serializa) → 3º agente estourava timeout 300 s; fix `LLM_TIMEOUT_S=900` no gateway (comentado no compose).
 1. Sanitização boundary + testes (padrão AI-Tractor: strip tokens de template + tags wrapper).
-2. API key interna (gateway→serviços); serviços recusam chamada direta sem key.
-3. Circuit breaker simples por serviço (3 falhas → resposta degradada explícita).
-4. Teste de injection no eval: pergunta com "ignore as instruções..." não pode vazar p/ tool-call fora do domínio.
+2. **Semantic injection detection** (`sanitize.py`): 14 padrões regex PT/EN, log-only (não reescreve texto).
+3. API key interna (gateway→serviços); serviços recusam chamada direta sem key.
+4. Circuit breaker simples por serviço (3 falhas → resposta degradada explícita).
+5. Teste de injection no eval: pergunta com "ignore as instruções..." não pode vazar p/ tool-call fora do domínio.
+6. **Anti-fabricação no system prompt**: regra crítica proíbe agente de fabricar dados em write ops — lista campos obrigatórios e pede ao usuário.
 
 ### Fase 5 — Observabilidade, demo e documentação — ✅ EXECUTADA 2026-06-10
 > As-built: trace_id + log JSON por nó já entregues na Fase 3 (verificados live). `README.md` de portfólio com topologia, tabela de latências medidas (classify 15–70 s; task single-domain 26–216 s; demo 3 domínios 480 s; cold load 55 s) e resultados reais de todos os gates. `evals/demo.py` gravou as 5 conversas em `demo/transcripts.{md,json}`: single-domain 115.5 s (férias Carlos = 30 dias), multi-domain 474.2 s (15% > limite 10%), fora de domínio 17.4 s (clarification), erro 422 112.8 s (8 un. disponíveis < 500), injection 84.2 s (salários ignorados, só saldo do SKU).
@@ -154,4 +168,8 @@ Implementado sobre a PoC estabilizada com LoRA 9B.
 4. **Langfuse v3 exige ClickHouse.** Pin para `langfuse/langfuse:2`. Healthcheck: `node -e "require('http')..."` (wget indisponivel). `HOSTNAME=0.0.0.0` obrigatorio (Next.js bind).
 5. **Single-domain box duplicado.** Agent event e final event identicos com 1 agente. Fix: frontend so renderiza agent box quando `expectedAgents > 1`.
 6. **Case-sensitivity em filtros SQL com LLM tool-calling.** LLMs enviam parametros em lowercase (ex.: `department='vendas'`). SQLite default e case-sensitive — query retorna vazio com dados existentes. Fix: `COLLATE NOCASE` em todo filtro textual (department, category, status, name). Incidente real: `get_headcount(department='vendas')` retornava [] com 3 funcionarios em "Vendas".
-7. **5 findings criticos de seguranca (auditoria pre-tunel).** `ACCESS_TOKEN` default vazio expunha `/chat` publicamente — fail-closed com `ALLOW_OPEN_ACCESS`. `.dockerignore` ausente — `.env` vazava em layers Docker. `/docs`/`/redoc` ativos em producao — desabilitados (`docs_url=None`). Stack traces no SSE error — mensagem generica + log interno. Containers root — Dockerfiles ja tinham `USER` nao-root (verificado). Regra: auditoria antes do tunel, nao apos.
+7. **5 findings criticos de seguranca (auditoria pre-tunel).** `ACCESS_TOKEN` default vazio expunha `/chat` publicamente — fail-closed com `ALLOW_OPEN_ACCESS`. `.dockerignore` ausente — `.env` vazava em layers Docker. `/docs`/`/redoc` ativos em producao — desabilitados (`docs_url=None`, `redoc_url=None`, `openapi_url=None`). Stack traces no SSE error — mensagem generica + log interno. Containers root — Dockerfiles ja tinham `USER` nao-root (verificado). Regra: auditoria antes do tunel, nao apos.
+8. **CF-Connecting-IP para IP real.** Cloudflare seta header nao-spoofavel. Fallback chain: `CF-Connecting-IP` → `X-Real-IP` → `X-Forwarded-For` → socket. Rate limiter usa essa chain.
+9. **Request deadline 600 s.** `REQUEST_TIMEOUT_S` independente do `LLM_TIMEOUT_S`. Heartbeat SSE (`:keepalive`) a cada 15 s — Cloudflare corta apos ~100 s sem bytes (erro 524).
+10. **Injection detection (14 patterns, log only).** `sanitize.py::flag_injection()` detecta padroes PT/EN de injection semantica. Nao reescreve o texto; defesa ativa e system prompt + isolamento + least-privilege.
+11. **Anti-fabricacao no system prompt.** LLM inventa dados se o prompt nao proibir explicitamente. Regra critica em `agents.py`: para write ops sem todos os campos obrigatorios, listar campos e pedir ao usuario. Nunca fabricar nomes, salarios, datas, quantidades, IDs ou SKUs.

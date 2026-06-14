@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from gateway.config import load_settings  # noqa: E402
+from gateway.embedder import SBERTEmbedder  # noqa: E402
 from gateway.llm import OllamaClient  # noqa: E402
 from gateway.router import RoutePlan, classify_intent  # noqa: E402
 from gateway.semantic_router import SemanticRouter  # noqa: E402
@@ -69,10 +70,13 @@ def main() -> int:
     llm = OllamaClient(settings.ollama_url, settings.model, timeout_s=settings.llm_timeout_s, keep_alive=settings.keep_alive)
     semantic = None
     if args.semantic:
+        embedder = SBERTEmbedder(
+            model_name=settings.sbert_model,
+            cache_dir=settings.sbert_cache_dir,
+        )
         semantic = SemanticRouter(
             settings.qdrant_url,
-            llm,
-            embed_model=settings.embed_model,
+            embedder,
             examples_path=str(GOLDEN),
             threshold=settings.semantic_threshold,
             top_k=settings.semantic_top_k,

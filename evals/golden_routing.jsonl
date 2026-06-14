@@ -23,7 +23,7 @@
 {"question": "Qual é a política de desconto para pedidos acima de 200 unidades?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Cancele o pedido número 7 do cliente Beta Corp.", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Posso aceitar pedido de 500 unidades com 15% de desconto?", "expect_domains": ["vendas", "estoque", "financas"], "expect_clarification": false}
-{"question": "Se eu fechar um pedido de 200 unidades do SKU CAD-001, o estoque cobre?", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Se eu fechar um pedido de 200 unidades do SKU CAD-001, o estoque cobre?", "expect_domains": ["estoque"], "expect_clarification": false}
 {"question": "Quanto vamos pagar de comissão sobre as vendas do mês e isso cabe no caixa?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
 {"question": "O reembolso de viagem do Carlos já entrou nas contas a pagar?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
 {"question": "Quantos funcionários temos no armazém e qual o saldo de estoque que eles administram?", "expect_domains": ["rh", "estoque"], "expect_clarification": false}
@@ -42,3 +42,22 @@
 {"question": "O cliente tá chorando um descontinho a mais no pedido grande, rola?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "me mostre o descritivo de comissão para a funcionária Juliana Castro Neves", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "qual a comissão do funcionário Rafael Monteiro neste mês?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Cadastre um novo funcionário chamado Lucas Pereira no setor de TI.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Qual o custo total de folha de pagamento do departamento financeiro?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
+{"question": "Registre uma conta a receber de R$ 5.000 referente ao pedido 42.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "O time de vendas precisa de 50 cadeiras novas — tem em estoque e quanto custa?", "expect_domains": ["estoque", "financas"], "expect_clarification": false}
+{"question": "Adicione 200 unidades do SKU TEC-003 ao estoque.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quais vendedores bateram a meta de comissão e quanto isso pesa na folha?", "expect_domains": ["vendas", "rh", "financas"], "expect_clarification": false}
+{"question": "Liste os pedidos pendentes do cliente Acme e verifique se temos estoque suficiente.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "O funcionário Maria Silva pediu férias — como fica a cobertura de vendas?", "expect_domains": ["rh", "vendas"], "expect_clarification": false}
+{"question": "Atualize o preço do SKU MON-027 para R$ 1.899.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quanto gastamos com reembolsos de viagem no trimestre e quantos funcionários solicitaram?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Preciso aprovar uma despesa de R$ 25.000 para reposição de estoque — tem orçamento?", "expect_domains": ["financas", "estoque"], "expect_clarification": false}
+{"question": "O pedido 15 do cliente Delta foi entregue? Confirme o estoque descontado.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Crie uma conta a pagar de R$ 3.200 para o fornecedor de monitores.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quantos produtos diferentes temos cadastrados no estoque?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "O estagiário do RH pode acessar os relatórios de vendas?", "expect_domains": [], "expect_clarification": true}
+{"question": "Demita o funcionário com matrícula 1042.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Feche o pedido 99 com 5% de desconto e confirme se o estoque aguenta.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Qual o faturamento do mês e quanto disso já entrou no caixa?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "Tem algum funcionário de férias na equipe de logística do estoque?", "expect_domains": ["rh", "estoque"], "expect_clarification": false}

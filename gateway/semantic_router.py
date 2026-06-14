@@ -45,6 +45,7 @@ class SemanticRouter:
         examples_path: str,
         threshold: float = 0.80,
         top_k: int = 5,
+        min_score_gap: float = 0.05,
         client: httpx.Client | None = None,
     ) -> None:
         self._qdrant_url = qdrant_url.rstrip("/")
@@ -52,6 +53,7 @@ class SemanticRouter:
         self._examples_path = examples_path
         self._threshold = threshold
         self._top_k = top_k
+        self._min_score_gap = min_score_gap
         self._client = client or httpx.Client(timeout=10.0)
         self._ready = False
 
@@ -152,18 +154,31 @@ class SemanticRouter:
         confident = [h for h in hits if h.get("score", 0.0) >= self._threshold]
         if not confident or confident[0] is not hits[0]:
             return None
-        # Consenso unânime: calibração leave-one-out mostrou que na banda 0.80–0.90
-        # vizinhos confiantes com labels conflitantes erram o conjunto de domínios.
-        # A camada semântica age como cache de perguntas quase idênticas; ambiguidade
-        # cai para o LLM classifier.
-        top_domains = tuple(hits[0]["payload"]["domains"])
-        if any(tuple(h["payload"]["domains"]) != top_domains for h in confident):
+
+        top_score = hits[0].get("score", 0.0)
+        top_domains = set(hits[0]["payload"]["domains"])
+
+        # Score gap: se o melhor vizinho com domínios diferentes está próximo demais,
+        # a query é ambígua — LLM decide. Evita matches onde single-domain casa com
+        # multi-domain por proximidade lexical (ex: "SKU CAD-001" em estoque vs vendas).
+        for h in hits[1:]:
+            h_domains = set(h["payload"]["domains"])
+            if h_domains != top_domains and (top_score - h.get("score", 0.0)) < self._min_score_gap:
+                logger.debug(
+                    "semantic_router: score gap insuficiente (%.3f vs %.3f) — fallback LLM",
+                    top_score, h.get("score", 0.0),
+                )
+                return None
+
+        # Consenso: todos os vizinhos confiantes devem concordar nos domínios.
+        # Vizinhos com domínios heterogêneos indicam zona de fronteira entre rotas.
+        if any(set(h["payload"]["domains"]) != top_domains for h in confident):
             return None
 
         score = hits[0]["score"]
         nearest = hits[0]["payload"]["question"]
         return RoutePlan(
-            domains=list(top_domains),  # type: ignore[arg-type]
+            domains=sorted(top_domains),  # type: ignore[arg-type]
             plan=f'Roteado por similaridade semântica (score {score:.2f}) com "{nearest}".',
             clarification=None,
         )

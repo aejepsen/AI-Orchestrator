@@ -4,6 +4,7 @@ import { AgentCard } from "./components/AgentCard";
 import { AgentSkeleton } from "./components/AgentSkeleton";
 import { Composer } from "./components/Composer";
 import { ConfirmCard } from "./components/ConfirmCard";
+import { Dashboard } from "./components/Dashboard";
 import { Pipeline, type Stage } from "./components/Pipeline";
 import { RouteChips } from "./components/RouteChips";
 import { Unlock } from "./components/Unlock";
@@ -12,6 +13,17 @@ import { ChatHttpError, resumeChat, streamChat, type RoutePlan } from "./lib/sse
 const TOKEN_KEY = "aio:access-token";
 const UNLOCKED_KEY = "aio:unlocked";
 const THREAD_KEY = "aio:thread-id";
+
+/* ───────── Simple hash router ───────── */
+function useHashRoute(): string {
+  const [hash, setHash] = useState(() => window.location.hash.replace("#", "") || "/");
+  useEffect(() => {
+    const handler = () => setHash(window.location.hash.replace("#", "") || "/");
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+  return hash;
+}
 
 /** Sanitize é local e rápido; depois disso o gateway está roteando. */
 const ROUTE_STAGE_DELAY_MS = 600;
@@ -32,6 +44,7 @@ let seq = 0;
 const nextId = () => `item-${++seq}`;
 
 export default function App() {
+  const route = useHashRoute();
   const [threadId, setThreadId] = useState(() => {
     let tid = localStorage.getItem(THREAD_KEY);
     if (!tid) {
@@ -241,36 +254,55 @@ export default function App() {
 
   if (!unlocked) return <Unlock error={authError} onUnlock={unlock} />;
 
+  const isDashboard = route === "/dashboard" || route === "dashboard";
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-bg/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-baseline gap-3 px-4 py-4 sm:px-6">
-          <h1 className="text-sm font-semibold tracking-tight">AI-Orchestrator</h1>
+        <div className="mx-auto flex w-full max-w-5xl items-baseline gap-3 px-4 py-4 sm:px-6">
+          <a href="#/" className="text-sm font-semibold tracking-tight text-ink hover:text-accent transition-colors">AI-Orchestrator</a>
           <p className="text-xs text-faint">Gateway multi-agente on-premise</p>
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => {
-                const newTid = crypto.randomUUID();
-                localStorage.setItem(THREAD_KEY, newTid);
-                setThreadId(newTid);
-                setItems([]);
-              }}
-              className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+            <a
+              href={isDashboard ? "#/" : "#/dashboard"}
+              className={`self-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                isDashboard
+                  ? "border-emerald-400/30 text-emerald-400 hover:border-emerald-400/50"
+                  : "border-line text-muted hover:border-emerald-400/40 hover:text-ink"
+              }`}
             >
-              Nova conversa
-            </button>
+              {isDashboard ? "Chat" : "Dashboard"}
+            </a>
+            {!isDashboard && (
+              <button
+                onClick={() => {
+                  const newTid = crypto.randomUUID();
+                  localStorage.setItem(THREAD_KEY, newTid);
+                  setThreadId(newTid);
+                  setItems([]);
+                }}
+                className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+              >
+                Nova conversa
+              </button>
+            )}
             <a
               href="/apresentacao/"
               target="_blank"
               rel="noopener"
               className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
             >
-              Apresentação ↗
+              Apresentacao
             </a>
           </div>
         </div>
       </header>
 
+      {isDashboard ? (
+        <main className="flex-1">
+          <Dashboard />
+        </main>
+      ) : (
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         {items.length === 0 && !busy && (
           <div className="animate-fade-up mt-[18vh] space-y-3 text-center">
@@ -349,12 +381,15 @@ export default function App() {
         </div>
         <div ref={endRef} className="h-px" />
       </main>
+      )}
 
+      {!isDashboard && (
       <footer className="sticky bottom-0 z-10 border-t border-line bg-bg/85 backdrop-blur">
         <div className="mx-auto w-full max-w-3xl px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
           <Composer disabled={busy} onSend={send} onStop={stop} />
         </div>
       </footer>
+      )}
     </div>
   );
 }

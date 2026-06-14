@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from gateway.agents import DomainAgentRunner
 from gateway.config import Settings, load_settings
 from gateway.graph import GatewayGraph
+from gateway.metrics import MetricsCollector
 from gateway.security import AccessTokenGuard, RateLimiter, client_ip
 from gateway.tracing import Tracer
 
@@ -83,9 +84,22 @@ def create_app(
             app.state.graph = factory()
         return app.state.graph
 
+    _metrics_collector = MetricsCollector(_settings_boot)
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics(http_request: Request) -> JSONResponse:
+        if not guard.allows(http_request.headers.get("x-access-token")):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "detail": "Token de acesso ausente ou inválido."},
+            )
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, _metrics_collector.collect)
+        return JSONResponse(content=data)
 
     @app.post("/chat", response_model=None)
     async def chat(body: ChatRequest, http_request: Request) -> StreamingResponse | JSONResponse:

@@ -47,6 +47,7 @@ class SemanticRouter:
         top_k: int = 5,
         min_score_gap: float = 0.05,
         client: httpx.Client | None = None,
+        api_key: str | None = None,
     ) -> None:
         self._qdrant_url = qdrant_url.rstrip("/")
         self._embedder = embedder
@@ -54,7 +55,8 @@ class SemanticRouter:
         self._threshold = threshold
         self._top_k = top_k
         self._min_score_gap = min_score_gap
-        self._client = client or httpx.Client(timeout=10.0)
+        headers = {"api-key": api_key} if api_key else {}
+        self._client = client or httpx.Client(timeout=10.0, headers=headers)
         self._ready = False
 
     # -- infraestrutura (lazy, idempotente) -----------------------------------

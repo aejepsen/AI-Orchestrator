@@ -123,6 +123,7 @@ class GatewayGraph:
                 examples_path=self._settings.routing_examples_path,
                 threshold=self._settings.semantic_threshold,
                 top_k=self._settings.semantic_top_k,
+                api_key=self._settings.qdrant_api_key,
             )
         self._semantic = semantic
         self._tracer = tracer
@@ -269,7 +270,8 @@ class GatewayGraph:
                 result = self._runner.run(domain, task)
                 payload = {"answer": result.final_answer, "trace": result.trace_as_dicts()}
             except Exception as exc:  # noqa: BLE001 — falha de um agente não derruba o fan-out
-                payload = {"answer": f"O agente de {domain} falhou: {exc}", "trace": [], "error": str(exc)}
+                logger.exception("Agente %s falhou: %s", domain, exc)
+                payload = {"answer": f"O agente de {domain} encontrou um erro interno.", "trace": [], "error": True}
             if on_agent:
                 on_agent(domain, payload["answer"])
             return domain, payload

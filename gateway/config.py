@@ -42,6 +42,7 @@ class Settings:
     internal_api_key: str | None = field(default_factory=lambda: os.environ.get("INTERNAL_API_KEY"))
     # Semantic router (Qdrant + embeddings locais). Desabilita com SEMANTIC_ENABLED=0.
     qdrant_url: str = field(default_factory=lambda: os.environ.get("QDRANT_URL", "http://localhost:6333"))
+    qdrant_api_key: str | None = field(default_factory=lambda: os.environ.get("QDRANT_API_KEY"))
     embed_model: str = field(default_factory=lambda: os.environ.get("EMBED_MODEL", "nomic-embed-text"))
     semantic_enabled: bool = field(
         default_factory=lambda: os.environ.get("SEMANTIC_ENABLED", "1") not in ("0", "false", "False")

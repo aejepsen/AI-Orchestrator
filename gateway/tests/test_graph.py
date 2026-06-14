@@ -126,7 +126,7 @@ def test_falha_de_um_agente_nao_derruba_fan_out():
 
     final = graph.run("o reembolso do Carlos já está nas contas a pagar?")
 
-    assert "falhou" in final["agent_results"]["rh"]["answer"]
+    assert "erro interno" in final["agent_results"]["rh"]["answer"].lower()
     assert final["agent_results"]["financas"]["answer"] == "Caixa ok."
     assert final["final_answer"] == "Síntese com falha parcial."
 

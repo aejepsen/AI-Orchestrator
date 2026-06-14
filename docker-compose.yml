@@ -47,6 +47,7 @@ services:
       - LLM_TIMEOUT_S=900
       # Semantic router: golden set indexado no Qdrant, embeddings locais.
       - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:?defina QDRANT_API_KEY no .env}
       - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
       - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-1}
       - SEMANTIC_THRESHOLD=${SEMANTIC_THRESHOLD:-0.92}
@@ -93,6 +94,8 @@ services:
     container_name: ai-orchestrator-qdrant
     ports:
       - "127.0.0.1:6333:6333"
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:?defina QDRANT_API_KEY no .env}
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -203,8 +206,8 @@ services:
       - "127.0.0.1:3100:3000"
     environment:
       - DATABASE_URL=postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse-local}@langfuse-db:5432/langfuse
-      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-mysecret-change-in-production}
-      - SALT=${LANGFUSE_SALT:-mysalt-change-in-production}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:?defina LANGFUSE_NEXTAUTH_SECRET no .env}
+      - SALT=${LANGFUSE_SALT:?defina LANGFUSE_SALT no .env}
       - NEXTAUTH_URL=http://localhost:3100
       - TELEMETRY_ENABLED=false
       - HOSTNAME=0.0.0.0

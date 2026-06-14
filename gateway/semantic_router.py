@@ -19,13 +19,13 @@ from pathlib import Path
 
 import httpx
 
-from gateway.llm import LLMError, OllamaClient
+from gateway.embedder import Embedder
+from gateway.llm import LLMError
 from gateway.router import RoutePlan
 
 logger = logging.getLogger(__name__)
 
 COLLECTION = "routing_examples"
-_EMBED_DIM = 768  # nomic-embed-text
 
 
 def _point_id(question: str) -> str:
@@ -40,17 +40,15 @@ class SemanticRouter:
     def __init__(
         self,
         qdrant_url: str,
-        llm: OllamaClient,
+        embedder: Embedder,
         *,
-        embed_model: str,
         examples_path: str,
         threshold: float = 0.80,
         top_k: int = 5,
         client: httpx.Client | None = None,
     ) -> None:
         self._qdrant_url = qdrant_url.rstrip("/")
-        self._llm = llm
-        self._embed_model = embed_model
+        self._embedder = embedder
         self._examples_path = examples_path
         self._threshold = threshold
         self._top_k = top_k
@@ -70,10 +68,28 @@ class SemanticRouter:
     def _ensure_collection(self) -> None:
         response = self._client.get(f"{self._qdrant_url}/collections/{COLLECTION}")
         if response.status_code == 200:
-            return
+            # Verifica se a dimensão da collection existente bate com o embedder.
+            try:
+                info = response.json().get("result", {})
+                existing_dim = (
+                    info.get("config", {})
+                    .get("params", {})
+                    .get("vectors", {})
+                    .get("size")
+                )
+                if existing_dim is not None and existing_dim != self._embedder.dim:
+                    logger.warning(
+                        "Collection %s com dim=%d, embedder dim=%d — recriando",
+                        COLLECTION, existing_dim, self._embedder.dim,
+                    )
+                    self._client.delete(f"{self._qdrant_url}/collections/{COLLECTION}")
+                else:
+                    return
+            except (KeyError, ValueError):
+                return
         response = self._client.put(
             f"{self._qdrant_url}/collections/{COLLECTION}",
-            json={"vectors": {"size": _EMBED_DIM, "distance": "Cosine"}},
+            json={"vectors": {"size": self._embedder.dim, "distance": "Cosine"}},
         )
         response.raise_for_status()
 
@@ -91,7 +107,7 @@ class SemanticRouter:
         ]
         if not records:
             return
-        vectors = self._llm.embed([r["question"] for r in records], model=self._embed_model)
+        vectors = self._embedder.embed([r["question"] for r in records])
         points = [
             {
                 "id": _point_id(record["question"]),
@@ -117,7 +133,7 @@ class SemanticRouter:
         """
         try:
             self.ensure_ready()
-            vector = self._llm.embed([question], model=self._embed_model)[0]
+            vector = self._embedder.embed([question])[0]
             body: dict = {"vector": vector, "limit": self._top_k + 1, "with_payload": True}
             response = self._client.post(
                 f"{self._qdrant_url}/collections/{COLLECTION}/points/search", json=body

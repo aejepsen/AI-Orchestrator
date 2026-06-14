@@ -101,16 +101,41 @@ class GatewayGraph:
         if semantic is None and self._settings is not None and self._settings.semantic_enabled:
             from gateway.semantic_router import SemanticRouter
 
+            # Tenta SBERT (CPU, sem dependência de Ollama para embeddings).
+            # Fallback para OllamaEmbedder se sentence-transformers não instalado.
+            try:
+                from gateway.embedder import SBERTEmbedder
+
+                embedder = SBERTEmbedder(
+                    model_name=self._settings.sbert_model,
+                    cache_dir=self._settings.sbert_cache_dir,
+                )
+                logger.info("Embedder: SBERTEmbedder (%s)", self._settings.sbert_model)
+            except Exception:  # noqa: BLE001
+                from gateway.embedder import OllamaEmbedder
+
+                embedder = OllamaEmbedder(self._llm, model=self._settings.embed_model)
+                logger.info("Embedder: OllamaEmbedder fallback (%s)", self._settings.embed_model)
+
             semantic = SemanticRouter(
                 self._settings.qdrant_url,
-                self._llm,
-                embed_model=self._settings.embed_model,
+                embedder,
                 examples_path=self._settings.routing_examples_path,
                 threshold=self._settings.semantic_threshold,
                 top_k=self._settings.semantic_top_k,
             )
         self._semantic = semantic
         self._tracer = tracer
+
+        # Injection Detector (BERTimbau). Fallback regex se indisponível.
+        self._injection_detector = None
+        if self._settings and self._settings.injection_detector_enabled:
+            from gateway.injection_detector import InjectionDetector
+
+            self._injection_detector = InjectionDetector(
+                model_path=self._settings.injection_model,
+                threshold=self._settings.injection_threshold,
+            )
 
         # Checkpointer: SqliteSaver se THREAD_DB_PATH configurado, senão MemorySaver.
         try:
@@ -146,7 +171,7 @@ class GatewayGraph:
         # Limpa estado residual de turns anteriores (checkpointer mantém tudo).
         update: GraphState = {
             "sanitized": sanitize_question(state["question"]),
-            "_injection_suspect": flag_injection(state["question"]),
+            "_injection_suspect": flag_injection(state["question"], detector=self._injection_detector),
             "final_answer": "",
             "agent_results": {},
             "route": {},

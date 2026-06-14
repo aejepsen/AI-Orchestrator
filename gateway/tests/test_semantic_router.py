@@ -12,18 +12,30 @@ from gateway.router import classify_intent
 from gateway.semantic_router import COLLECTION, SemanticRouter, _point_id
 
 
-class FakeEmbedLLM:
-    """LLM fake só com embed(); chat() não deve ser chamado nestes testes."""
+class FakeEmbedder:
+    """Embedder fake que implementa o protocol Embedder."""
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, dim: int = 384, fail: bool = False) -> None:
+        self._dim = dim
         self._fail = fail
         self.embed_calls: list[list[str]] = []
 
-    def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
         if self._fail:
             raise LLMError("embedding fora")
         self.embed_calls.append(texts)
-        return [[0.1] * 768 for _ in texts]
+        return [[0.1] * self._dim for _ in texts]
+
+
+class FakeEmbedLLM:
+    """LLM fake para testes de classify_intent (precisa de chat())."""
+
+    def __init__(self) -> None:
+        pass
 
     def chat(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise AssertionError("chat() não deveria ser chamado quando o semantic resolve")
@@ -44,11 +56,10 @@ def _qdrant_transport(hits: list[dict[str, Any]]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-def _router(hits: list[dict[str, Any]], *, llm: Any | None = None, threshold: float = 0.80) -> SemanticRouter:
+def _router(hits: list[dict[str, Any]], *, embedder: Any | None = None, threshold: float = 0.80) -> SemanticRouter:
     return SemanticRouter(
         "http://qdrant.test",
-        llm or FakeEmbedLLM(),
-        embed_model="fake-embed",
+        embedder or FakeEmbedder(),
         examples_path="/inexistente/golden.jsonl",  # seed vira no-op com warning
         threshold=threshold,
         top_k=3,
@@ -91,7 +102,7 @@ def test_rejeita_vizinhos_divergentes():
 
 
 def test_degrada_para_none_com_embedding_fora():
-    router = _router([], llm=FakeEmbedLLM(fail=True))
+    router = _router([], embedder=FakeEmbedder(fail=True))
     assert router.route("qualquer pergunta") is None
 
 
@@ -148,8 +159,7 @@ def test_seed_indexa_golden(tmp_path):
 
     router = SemanticRouter(
         "http://qdrant.test",
-        FakeEmbedLLM(),
-        embed_model="fake-embed",
+        FakeEmbedder(),
         examples_path=str(golden),
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )

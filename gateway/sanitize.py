@@ -49,8 +49,17 @@ _INJECTION_PATTERNS = [
 ]
 
 
-def flag_injection(text: str) -> bool:
-    """Retorna True se o texto contém padrão semântico de injection."""
+def flag_injection(text: str, detector: "InjectionDetector | None" = None) -> bool:
+    """Retorna True se o texto contém padrão semântico de injection.
+
+    Se um ``InjectionDetector`` for fornecido e estiver disponível, usa o
+    classificador BERTimbau; caso contrário, cai no fallback regex.
+    """
+    if detector is not None:
+        try:
+            return detector.is_injection(text)
+        except Exception:
+            pass  # fallback regex
     return any(p.search(text) for p in _INJECTION_PATTERNS)
 
 

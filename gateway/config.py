@@ -51,6 +51,11 @@ class Settings:
     routing_examples_path: str = field(
         default_factory=lambda: os.environ.get("ROUTING_EXAMPLES_PATH", "evals/golden_routing.jsonl")
     )
+    # SBERT embeddings (CPU). Fallback para Ollama se sentence-transformers não instalado.
+    sbert_model: str = field(
+        default_factory=lambda: os.environ.get("SBERT_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+    )
+    sbert_cache_dir: str = field(default_factory=lambda: os.environ.get("SBERT_CACHE_DIR", "/app/models"))
     # Langfuse (observabilidade LLM). Desabilita com LANGFUSE_ENABLED=0.
     langfuse_enabled: bool = field(
         default_factory=lambda: os.environ.get("LANGFUSE_ENABLED", "1") not in ("0", "false", "False")
@@ -60,6 +65,16 @@ class Settings:
     langfuse_secret_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-local"))
     # Estado conversacional (multi-turn)
     thread_db_path: str = field(default_factory=lambda: os.environ.get("THREAD_DB_PATH", "/tmp/threads.db"))
+    # Injection Detector (BERTimbau fine-tunado). Desabilita com INJECTION_DETECTOR_ENABLED=0.
+    injection_model: str = field(
+        default_factory=lambda: os.environ.get("INJECTION_MODEL", "models/injection_classifier")
+    )
+    injection_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("INJECTION_THRESHOLD", "0.7"))
+    )
+    injection_detector_enabled: bool = field(
+        default_factory=lambda: os.environ.get("INJECTION_DETECTOR_ENABLED", "1") not in ("0", "false", "False")
+    )
     # Pool dedicado para execução do grafo (evita competir com asyncio default pool).
     max_graph_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_GRAPH_WORKERS", "4")))
     # Timeout global de request SSE (segundos). Independente do LLM_TIMEOUT_S.

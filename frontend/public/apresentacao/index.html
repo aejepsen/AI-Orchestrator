@@ -192,18 +192,18 @@
   @media print {
     section.slide { min-height: auto; page-break-after: always; padding: 40px; }
     .nav-hint, .back-btn { display: none; }
-    /* Slide 09 compactado para caber em uma página */
-    #s9 { padding: 28px 40px; }
-    #s9 h2 { font-size: 26px; margin-bottom: 8px; }
-    #s9 .sub { font-size: 13px; }
-    #s9 table { margin-top: 16px; font-size: 12px; }
-    #s9 th { padding: 8px 12px; }
-    #s9 td { padding: 9px 12px; }
-    #s9 .grid3 { margin-top: 16px; gap: 12px; }
-    #s9 .card { padding: 16px 18px; }
-    #s9 .big-number { font-size: 34px; }
-    #s9 .card p { font-size: 11.5px; margin-top: 6px !important; }
-    #s9 .footnote { margin-top: 14px; font-size: 10px; }
+    /* Slide 13 (financeiro) compactado para caber em uma página */
+    #s13 { padding: 28px 40px; }
+    #s13 h2 { font-size: 26px; margin-bottom: 8px; }
+    #s13 .sub { font-size: 13px; }
+    #s13 table { margin-top: 16px; font-size: 12px; }
+    #s13 th { padding: 8px 12px; }
+    #s13 td { padding: 9px 12px; }
+    #s13 .grid3 { margin-top: 16px; gap: 12px; }
+    #s13 .card { padding: 16px 18px; }
+    #s13 .big-number { font-size: 34px; }
+    #s13 .card p { font-size: 11.5px; margin-top: 6px !important; }
+    #s13 .footnote { margin-top: 14px; font-size: 10px; }
   }
 </style>
 </head>
@@ -213,7 +213,7 @@
 
 <!-- 01 · Capa -->
 <section class="slide" id="s1">
-  <span class="num">01 / 10</span>
+  <span class="num">01 / 14</span>
   <div class="kicker">suasalada.com.br · em produção</div>
   <h1>AI-Orchestrator</h1>
   <p class="sub" style="margin-top:22px">
@@ -232,7 +232,7 @@
 
 <!-- 02 · Problema -->
 <section class="slide" id="s2">
-  <span class="num">02 / 10</span>
+  <span class="num">02 / 14</span>
   <div class="kicker">O problema</div>
   <h2>Perguntas de negócio cruzam sistemas.<br>Pessoas não deveriam precisar cruzá-los manualmente.</h2>
   <div class="grid3">
@@ -256,7 +256,7 @@
 
 <!-- 03 · Solução -->
 <section class="slide" id="s3">
-  <span class="num">03 / 10</span>
+  <span class="num">03 / 14</span>
   <div class="kicker">A solução</div>
   <h2>Fluxo completo — da pergunta à resposta auditável</h2>
   <p class="sub">Browser → Cloudflare Tunnel → Gateway FastAPI → grafo LangGraph → agentes em paralelo
@@ -270,7 +270,7 @@
 
 <!-- 04 · Orquestração -->
 <section class="slide" id="s4">
-  <span class="num">04 / 10</span>
+  <span class="num">04 / 14</span>
   <div class="kicker">Orquestração</div>
   <h2>LangGraph: 5 nós, decisões explícitas</h2>
   <p class="sub">Sanitização anti-injeção → classificação em três camadas (semântica via Qdrant kNN,
@@ -285,7 +285,7 @@
 
 <!-- 05 · Microserviços -->
 <section class="slide" id="s5">
-  <span class="num">05 / 10</span>
+  <span class="num">05 / 14</span>
   <div class="kicker">Domínios</div>
   <h2>A regra de negócio vive na API — nunca no prompt</h2>
   <p class="sub">Quatro microserviços FastAPI independentes, cada um com seu banco e suas regras
@@ -299,7 +299,7 @@
 
 <!-- 06 · Agentes -->
 <section class="slide" id="s6">
-  <span class="num">06 / 10</span>
+  <span class="num">06 / 14</span>
   <div class="kicker">Agentes especialistas</div>
   <h2>Um agente por domínio, least-privilege por construção</h2>
   <p class="sub">Mesmo modelo residente, mas cada agente só enxerga as tools do seu microserviço.
@@ -315,7 +315,7 @@
 
 <!-- 07 · Segurança -->
 <section class="slide" id="s7">
-  <span class="num">07 / 10</span>
+  <span class="num">07 / 14</span>
   <div class="kicker">Segurança</div>
   <h2>Defesa em camadas, validada por evals</h2>
   <div class="grid3">
@@ -350,16 +350,17 @@
 
 <!-- 08 · Stack -->
 <section class="slide" id="s8">
-  <span class="num">08 / 10</span>
+  <span class="num">08 / 14</span>
   <div class="kicker">Ferramentas</div>
   <h2>Stack 100% open-source — zero licença, zero vendor lock-in</h2>
   <div style="margin-top:28px">
     <span class="pill">Python · FastAPI</span>
     <span class="pill">LangGraph</span>
     <span class="pill">Ollama</span>
-    <span class="pill">Qwen (2.5 7B / 3 30B-A3B)</span>
+    <span class="pill">Qwen 3.5-9B LoRA (fine-tuned)</span>
     <span class="pill">Qdrant (busca vetorial)</span>
-    <span class="pill">nomic-embed-text</span>
+    <span class="pill">SBERT (MiniLM-L12-v2)</span>
+    <span class="pill">BERTimbau (injection detector)</span>
     <span class="pill">SQLite</span>
     <span class="pill">React + Vite</span>
     <span class="pill">SSE</span>
@@ -374,9 +375,9 @@
       regressão de comportamento do LLM é detectada como bug, não como surpresa.</p>
     </div>
     <div class="card accent-blue">
-      <h3>Modelo configurável</h3>
-      <p>Variável <code>MODEL</code> troca o modelo sem código: 7B (latência, 100% GPU)
-      ou MoE 30B (qualidade). Mesmo grafo, mesmo contrato.</p>
+      <h3>Modelo configurável + LoRA</h3>
+      <p>Variável <code>MODEL</code> troca o modelo sem código. Produção: <strong>Qwen 3.5-9B LoRA</strong>
+      (fine-tuned em 3.050 exemplos, 100% GPU, ~2–4 s/task). Mesmo grafo, mesmo contrato.</p>
     </div>
     <div class="card accent-blue">
       <h3>Extensível por OpenAPI</h3>
@@ -386,9 +387,119 @@
   </div>
 </section>
 
-<!-- 09 · Impacto financeiro -->
+<!-- 09 · SBERT Embeddings -->
 <section class="slide" id="s9">
-  <span class="num">09 / 10</span>
+  <span class="num">09 / 14</span>
+  <div class="kicker">BERT Stack</div>
+  <h2>SBERT Embeddings — roteamento semântico em CPU</h2>
+  <p class="sub">Embeddings dedicados para o Semantic Router, rodando inteiramente em CPU
+  e liberando a GPU para inferência LLM.</p>
+  <div class="grid2">
+    <div class="card accent-blue">
+      <h3>paraphrase-multilingual-MiniLM-L12-v2</h3>
+      <ul>
+        <li>384 dimensões, CPU-only</li>
+        <li>Substituiu nomic-embed-text (768 dim, GPU)</li>
+        <li>0.02 s vs 0.84 s LLM — <strong style="color:var(--green)">41x mais rápido</strong></li>
+        <li>Multilingual: pt-BR, en, es sem troca de modelo</li>
+      </ul>
+    </div>
+    <div class="card accent-blue">
+      <h3>Embedder Protocol</h3>
+      <ul>
+        <li>Interface abstrata <code>EmbedderProtocol</code></li>
+        <li>SBERTEmbedder (primário, CPU)</li>
+        <li>OllamaEmbedder (fallback, GPU)</li>
+        <li>Troca de backend sem alterar o router</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · Injection Detector -->
+<section class="slide" id="s10">
+  <span class="num">10 / 14</span>
+  <div class="kicker">BERT Stack</div>
+  <h2>Injection Detector — BERTimbau fine-tunado</h2>
+  <p class="sub">Classificador binário treinado sobre BERTimbau para detectar e bloquear
+  tentativas de prompt injection antes que a query chegue ao LLM.</p>
+  <div class="grid2">
+    <div class="card accent-amber">
+      <h3>Modelo</h3>
+      <ul>
+        <li>neuralmind/bert-base-portuguese-cased</li>
+        <li>Fine-tunado: 3 epochs, lr=2e-5, batch=16</li>
+        <li>Dataset sintético: 400 exemplos (200 clean + 200 injection)</li>
+        <li><strong style="color:var(--green)">100% validation accuracy</strong></li>
+      </ul>
+    </div>
+    <div class="card accent-amber">
+      <h3>Pipeline</h3>
+      <ul>
+        <li>sanitize → BERT score → flag/block</li>
+        <li>Fallback regex quando modelo indisponível</li>
+        <li>Score threshold configurável</li>
+        <li>Logging estruturado de tentativas bloqueadas</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · Resultados -->
+<section class="slide" id="s11">
+  <span class="num">11 / 14</span>
+  <div class="kicker">BERT Stack</div>
+  <h2>Resultados — gates de qualidade validados</h2>
+  <div class="grid3">
+    <div class="card accent-green">
+      <span class="big-number">90.5%</span>
+      <p style="margin-top:10px">Routing accuracy: 57/63 queries roteadas corretamente.
+      Gate 90% — <strong style="color:var(--green)">PASS</strong>.</p>
+    </div>
+    <div class="card accent-green">
+      <span class="big-number">0 leaks</span>
+      <p style="margin-top:10px">Injection eval: 0/6 tentativas de injection passaram.
+      Gate — <strong style="color:var(--green)">PASS</strong>.</p>
+    </div>
+    <div class="card accent-green">
+      <span class="big-number">0 / 0</span>
+      <p style="margin-top:10px">Auditoria /hm-engineer: zero achados CRITICO,
+      zero ALTO. Score gap filter + consenso unânime.</p>
+    </div>
+  </div>
+  <p class="footnote">Golden set: 64 exemplos (20 novos multi-domínio). Evals com score gap filter e consenso
+  unânime entre classificadores para evitar falso-positivos.</p>
+</section>
+
+<!-- 12 · Arquitetura BERT Stack -->
+<section class="slide" id="s12">
+  <span class="num">12 / 14</span>
+  <div class="kicker">BERT Stack</div>
+  <h2>Arquitetura — SBERT em CPU, Qwen em GPU</h2>
+  <p class="sub">Dois modelos BERT rodando em CPU, sem competir com o LLM por VRAM.
+  Pipeline completo de segurança e roteamento antes da inferência generativa.</p>
+  <div class="card" style="margin-top:36px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:14px;line-height:2.2;padding:32px 36px;background:var(--panel);border:1px solid var(--border);border-radius:14px">
+    <span style="color:var(--blue)">User Query</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;│</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;▼</span><br>
+    <span style="color:var(--amber)">Sanitize</span> <span style="color:var(--mut)">──</span> <span style="color:var(--amber)">BERTimbau injection classifier</span> <span style="color:var(--mut)">(CPU)</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;│ clean? ──▶ continue &nbsp;&nbsp;│ injection? ──▶ block</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;▼</span><br>
+    <span style="color:var(--blue)">Semantic Router</span> <span style="color:var(--mut)">──</span> <span style="color:var(--blue)">SBERT + Qdrant kNN</span> <span style="color:var(--mut)">(CPU)</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;│ high confidence? ──▶ skip LLM</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;▼</span><br>
+    <span style="color:var(--violet)">LLM Classifier</span> <span style="color:var(--mut)">──</span> <span style="color:var(--violet)">Qwen 3.5-9B LoRA</span> <span style="color:var(--mut)">(GPU)</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;│</span><br>
+    <span style="color:var(--mut)">&nbsp;&nbsp;▼</span><br>
+    <span style="color:var(--green)">Agents</span> <span style="color:var(--mut)">──</span> <span style="color:var(--green)">fan-out paralelo por domínio</span> <span style="color:var(--mut)">(GPU)</span>
+  </div>
+  <p class="footnote">SBERT e BERTimbau ocupam ~500 MB de RAM. GPU (12 GB VRAM) fica 100% dedicada ao Qwen.
+  Queries já conhecidas resolvem em ~0.02 s pelo Semantic Router sem acionar o LLM.</p>
+</section>
+
+<!-- 13 · Impacto financeiro -->
+<section class="slide" id="s13">
+  <span class="num">13 / 14</span>
   <div class="kicker">Conclusões · impacto financeiro</div>
   <h2>On-premise: custo marginal por consulta → zero</h2>
   <p class="sub">Cada consulta multi-domínio dispara 8–15 chamadas de LLM (classificação,
@@ -440,9 +551,9 @@
   saturação da GPU — quanto maior o uso, maior a economia.</p>
 </section>
 
-<!-- 10 · Fechamento -->
-<section class="slide" id="s10">
-  <span class="num">10 / 10</span>
+<!-- 14 · Fechamento -->
+<section class="slide" id="s14">
+  <span class="num">14 / 14</span>
   <div class="kicker">Conclusão</div>
   <h2>IA corporativa com soberania de dados,<br>custo previsível e regra de negócio auditável.</h2>
   <div class="grid3">

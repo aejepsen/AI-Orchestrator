@@ -37,6 +37,8 @@ AI-Orchestrator/
 │   ├── sanitize.py               # boundary anti-injection + 14 regex injection detection (log only)
 │   ├── security.py               # AccessTokenGuard (fail-closed) + RateLimiter + CF-Connecting-IP
 │   ├── config.py                 # Settings dataclass (todas as envs)
+│   ├── embedder.py               # Embedder Protocol (SBERTEmbedder + OllamaEmbedder fallback, 384 dim)
+│   ├── injection_classifier.py   # BERTimbau fine-tunado (400 exemplos, 100% val accuracy)
 │   ├── tracing.py                # Langfuse integration (trace/span/generation)
 │   └── tools/                    # registry OpenAPI→tools + circuit breaker
 ├── services/
@@ -52,7 +54,7 @@ AI-Orchestrator/
 │   ├── eval_injection.py         # gate 0 leaks
 │   └── demo.py                   # 5 conversas gravadas
 ├── train/                        # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
-├── docs/                         # PLANO_LORA_9B.md, SKILL_MULTIAGENT.md
+├── docs/                         # PLANO_LORA_9B.md, SKILL_MULTIAGENT.md, AUDIT_2026-06-14.md, gen_diagrams.py (7 PNGs)
 └── demo/                         # transcripts gravados
 ```
 

@@ -15,6 +15,7 @@ BLUE = "#60a5fa"
 AMBER = "#fbbf24"
 RED = "#f87171"
 VIOLET = "#a78bfa"
+PINK = "#f472b6"
 
 DOCS = "/home/aejepsen/Documentos/projeto-portifolio/AI-Orchestrator/docs"
 
@@ -196,7 +197,7 @@ for i, (port, ac, title, lines) in enumerate(MS):
                 ln if cont else "▸ " + ln, color=TXT, fontsize=7.4)
         yy -= 0.05
     box(ax, x + 0.03, y - 0.075, w - 0.06, 0.05, fc="#0d0d12", ec=BORDER)
-    ax.text(x + w / 2, y - 0.05, "SQLite (volume)", color=MUT, fontsize=7.5,
+    ax.text(x + w / 2, y - 0.05, "SQLite WAL (volume)", color=MUT, fontsize=7.5,
             ha="center", family="monospace")
     arrow(ax, 0.5, gw_y, x + w / 2, y + h, color=ac, lw=1.3)
     ax.text(x + w / 2, y - 0.075 - 0.012, "", color=MUT, fontsize=7)
@@ -230,7 +231,7 @@ ty = 0.855
 node(0.045, ty, 0.185, 0.062, "Browser", "React + SSE · Unlock\n(ACCESS_TOKEN)", ec=GREEN)
 node(0.285, ty, 0.185, 0.062, "Cloudflare Tunnel", "cloudflared\nsuasalada.com.br", ec="#f59e0b")
 node(0.525, ty, 0.215, 0.062, "Gateway FastAPI :8100", "auth Bearer · rate limit/h\nPOST /chat → SSE", ec="#3a3a55")
-node(0.79, ty, 0.17, 0.062, "Ollama :11434", "chat: MODEL (qwen)\nembed: nomic-embed-text", ec="#7c3aed")
+node(0.79, ty, 0.17, 0.062, "Ollama :11434", "chat: MODEL (qwen)\ninferência local GPU/CPU", ec="#7c3aed")
 arrow(ax, 0.23, ty + 0.031, 0.285, ty + 0.031, color=MUT)
 arrow(ax, 0.47, ty + 0.031, 0.525, ty + 0.031, color=MUT)
 arrow(ax, 0.74, ty + 0.031, 0.79, ty + 0.031, color="#7c3aed")
@@ -239,10 +240,14 @@ ax.text(0.875, ty - 0.012, "usado por classify · agentes · synthesize",
 
 # ---- fluxo vertical (LangGraph) ----
 cx, nw, nh = 0.5, 0.26, 0.062
-node(cx - nw / 2, 0.745, nw, nh, "sanitize", "normaliza e neutraliza injeção\nde markup/controle", ec=GREEN)
+node(cx - nw / 2, 0.745, nw, nh, "sanitize", "BERT injection detector\nregex fallback · normaliza input", ec=GREEN)
+# SBERT embedder (à direita do sanitize)
+node(0.76, 0.745, 0.205, nh, "SBERT Embedder", "MiniLM-L12 (384d, CPU)\nembeddings locais", ec=PINK)
+arrow(ax, 0.82, 0.745, 0.62, 0.697, color=PINK, lw=1.0)
+ax.text(0.78, 0.738, "embed query", color=PINK, fontsize=7)
 node(cx - nw / 2, 0.635, nw, nh, "classify", "semântico (Qdrant kNN) → LLM\n→ léxico · guards determinísticos", ec=GREEN)
 # Qdrant — banco vetorial do semantic router (à esquerda do classify)
-node(0.045, 0.635, 0.205, nh, "Qdrant :6333", "routing_examples\ngolden set indexado (cosine)", ec="#22d3ee")
+node(0.045, 0.635, 0.205, nh, "Qdrant :6333", "routing_examples (384d)\nAPI key auth · cosine kNN", ec="#22d3ee")
 arrow(ax, 0.25, 0.666, cx - nw / 2, 0.666, color="#22d3ee")
 ax.text(0.31, 0.676, "kNN ≥ 0.92 + consenso", color="#22d3ee", fontsize=7)
 node(cx - nw / 2, 0.525, nw, nh, "dispatch", "fan-out paralelo por domínio\nThreadPoolExecutor", ec=BLUE)
@@ -287,8 +292,8 @@ for i in range(4):
 ax.text(cx + 0.155, 0.21, "answers", color=MUT, fontsize=7.5)
 arrow(ax, cx, 0.125, cx, 0.085, color=GREEN)
 
-ax.text(0.5, 0.005, "Segurança: sanitize anti-injeção · classifier ignora comandos injetados · "
-        "tools least-privilege por domínio · X-Internal-Key · rate limit · ACCESS_TOKEN público",
+ax.text(0.5, 0.005, "Segurança: BERT injection detector · SBERT embeddings (384d) · Qdrant API key auth · "
+        "tools least-privilege · X-Internal-Key · rate limit · ACCESS_TOKEN · SQLite WAL",
         color=MUT, fontsize=8.5, ha="center")
 
 fig.savefig(f"{DOCS}/architecture-flow.png", facecolor=BG, bbox_inches="tight")
@@ -316,7 +321,7 @@ ax.scatter([0.06], [0.79], s=420, color=GREEN, zorder=4)
 ax.text(0.06, 0.745, "START", color=GREEN, fontsize=10, fontweight="bold", ha="center")
 
 gnode(0.13, 0.73, 0.20, 0.12, "sanitize",
-      ["normaliza input, remove", "padrões de prompt-injection"], ec=BORDER)
+      ["BERT injection detector", "(BERTimbau fine-tunado)", "regex fallback"], ec=BORDER)
 gnode(0.38, 0.70, 0.23, 0.15, "classify",
       ["semântico (Qdrant kNN ≥ 0.92)", "→ LLM → léxico · guards", "→ RoutePlan {domains, plan}"], ec=BORDER)
 ax.text(0.495, 0.675, "emite evento SSE “route”", color=MUT, fontsize=8.6,
@@ -325,12 +330,16 @@ ax.text(0.495, 0.675, "emite evento SSE “route”", color=MUT, fontsize=8.6,
 arrow(ax, 0.08, 0.79, 0.13, 0.79, color=GREEN)
 arrow(ax, 0.33, 0.79, 0.38, 0.79, color=MUT)
 
-# Qdrant — banco vetorial consultado pela camada semântica do classify
-gnode(0.06, 0.50, 0.24, 0.115, "Qdrant :6333",
-      ["collection routing_examples", "golden set indexado (cosine, 768d)"], ec="#22d3ee", tc="#22d3ee")
-arrow(ax, 0.21, 0.615, 0.40, 0.70, color="#22d3ee")
-ax.text(0.255, 0.672, "kNN + consenso unânime", color="#22d3ee", fontsize=8,
-        ha="center", style="italic")
+# SBERT embedder (coluna esquerda, abaixo de sanitize com gap claro)
+gnode(0.02, 0.57, 0.22, 0.095, "SBERT Embedder",
+      ["MiniLM-L12 (384d)", "CPU · local"], ec=PINK, tc=PINK)
+arrow(ax, 0.24, 0.635, 0.40, 0.73, color=PINK, lw=1.0)
+ax.text(0.34, 0.70, "embed", color=PINK, fontsize=8, style="italic")
+# Qdrant — banco vetorial (abaixo de SBERT)
+gnode(0.02, 0.43, 0.22, 0.105, "Qdrant :6333",
+      ["routing_examples (384d)", "cosine · API key auth"], ec="#22d3ee", tc="#22d3ee")
+arrow(ax, 0.24, 0.50, 0.40, 0.70, color="#22d3ee")
+ax.text(0.34, 0.60, "kNN + consenso", color="#22d3ee", fontsize=8, style="italic")
 
 gnode(0.69, 0.745, 0.27, 0.14, "respond_clarification",
       ["pergunta ambígua →", "devolve pedido de esclarecimento", "(final_answer direto)"], ec=AMBER, tc=AMBER)

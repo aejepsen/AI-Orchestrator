@@ -1,0 +1,168 @@
+{
+  "timestamp": "2026-06-14T13:41:04.705110",
+  "model": "qwen2.5:7b-instruct-q4_K_M",
+  "semantic": true,
+  "layer_counts": {
+    "semantic": 1,
+    "llm": 9,
+    "lexical": 0
+  },
+  "total": 10,
+  "hits": 9,
+  "accuracy": 0.9,
+  "gate": 0.9,
+  "passed": true,
+  "items": [
+    {
+      "question": "Quais contas a pagar vencem esta semana?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar as contas a pagar que vencem na semana atual.",
+      "layer": "llm",
+      "elapsed_s": 0.81,
+      "ok": true
+    },
+    {
+      "question": "Qual é a projeção de fluxo de caixa para os próximos 30 dias?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar as projeções de fluxo de caixa para os próximos 30 dias no domínio de finanças.",
+      "layer": "llm",
+      "elapsed_s": 0.97,
+      "ok": true
+    },
+    {
+      "question": "Quem precisa aprovar um pagamento de R$ 80.000?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar a alçada de aprovação para pagamentos no valor de R$ 80.000.",
+      "layer": "llm",
+      "elapsed_s": 0.9,
+      "ok": true
+    },
+    {
+      "question": "Quanto temos de contas a receber em aberto?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar as contas a receber em aberto no sistema financeiro.",
+      "layer": "llm",
+      "elapsed_s": 0.78,
+      "ok": true
+    },
+    {
+      "question": "Registre uma despesa de R$ 1.200 com manutenção predial.",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Registrar a despesa de R$ 1.200 com manutenção predial no sistema financeiro.",
+      "layer": "llm",
+      "elapsed_s": 0.89,
+      "ok": true
+    },
+    {
+      "question": "Qual foi o total de despesas aprovadas no mês passado?",
+      "expect_domains": [
+        "financas"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "financas"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar as despesas aprovadas no mês anterior.",
+      "layer": "llm",
+      "elapsed_s": 0.71,
+      "ok": true
+    },
+    {
+      "question": "Quantos dias de férias a Maria ainda pode tirar?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar saldo de férias do funcionário Maria no RH.",
+      "layer": "llm",
+      "elapsed_s": 0.8,
+      "ok": true
+    },
+    {
+      "question": "Qual é o salário do João da equipe de logística?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Consultar o salário do funcionário João na equipe de logística no domínio de RH.",
+      "layer": "llm",
+      "elapsed_s": 0.79,
+      "ok": true
+    },
+    {
+      "question": "Quero solicitar reembolso de uma viagem de R$ 450.",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "RH processará o pedido de reembolso da viagem do funcionário.",
+      "layer": "llm",
+      "elapsed_s": 0.74,
+      "ok": true
+    },
+    {
+      "question": "Quantos funcionários temos no departamento comercial?",
+      "expect_domains": [
+        "rh"
+      ],
+      "expect_clarification": false,
+      "got_domains": [
+        "estoque",
+        "rh"
+      ],
+      "got_clarification": false,
+      "plan": "Roteado por similaridade semântica (score 0.82) com \"Quantos funcionários temos no armazém e qual o saldo de estoque que eles administram?\".",
+      "layer": "semantic",
+      "elapsed_s": 0.02,
+      "ok": false
+    }
+  ]
+}

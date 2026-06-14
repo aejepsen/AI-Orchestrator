@@ -5,7 +5,7 @@
 - **SBERT**: paraphrase-multilingual-MiniLM-L12-v2 (CPU, dim=384)
 - **Injection detector**: BERTimbau fine-tunado (100% val accuracy, 63 amostras)
 - **Semantic router**: Qdrant + SBERT embeddings, threshold 0.92 (prod) / 0.75 (teste)
-- **Golden set**: 44 perguntas (evals/golden_routing.jsonl)
+- **Golden set**: 44 perguntas no momento deste benchmark (evals/golden_routing.jsonl — posteriormente expandido para 64)
 
 ## Resultados
 

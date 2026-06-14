@@ -38,7 +38,7 @@ class SBERTEmbedder:
             self._model = SentenceTransformer(
                 self._model_name, cache_folder=self._cache_dir, device="cpu"
             )
-            self._dim = self._model.get_embedding_dimension()
+            self._dim = self._model.get_sentence_embedding_dimension()
             logger.info(
                 "SBERTEmbedder loaded: %s (dim=%d)", self._model_name, self._dim
             )

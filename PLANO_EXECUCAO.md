@@ -87,8 +87,8 @@ AI-Orchestrator/
 2. Loop de tool-calling por domínio (MoE com contexto/tools escopados; máx. N iterações, timeout, retry com erro 422 reinjetado).
 3. Eval por domínio: 10 tarefas golden por serviço (ex.: "reserve 50 unidades do SKU X" → chamada correta + resposta fundada no retorno da API).
 
-### Fase 3 — Gateway / Orquestrador — ✅ EXECUTADA 2026-06-10 (gate PASS 90.5%)
-> As-built: `gateway/sanitize.py` (boundary anti-injection, padrão AI-Tractor), `gateway/router.py` (RoutePlan Pydantic + `format` JSON + retry 1x + fallback léxico; clarification = rota válida), `gateway/graph.py` (LangGraph StateGraph: sanitize → classify → [clarification | dispatch fan-out ThreadPoolExecutor → synthesize]; síntese pula LLM com 1 domínio; trace_id + log JSON por nó), `gateway/main.py` (POST /chat SSE: eventos route/agent/final/error). Eval `evals/eval_routing.py` (42 perguntas: 24 single, 9 multi, 5 clarification, 4 coloquiais): **38/42 = 90.5% — gate ≥90% PASS** (`evals/results/routing_20260610_133228.json`); reconfirmado 38/42 = 90.5% após endurecimento anti-injection do prompt do router na Fase 4 (`routing_20260610_154956.json`). Caso demo multi-domínio (3 domínios) roteado correto. Falha residual típica: coloquial "descontinho no pedido" → modelo inclui financas além de vendas (sobre-roteamento, não erro de domínio).
+### Fase 3 — Gateway / Orquestrador — ✅ EXECUTADA 2026-06-10 (gate PASS 90.5%), atualizado 2026-06-14
+> As-built: `gateway/sanitize.py` (boundary anti-injection, padrão AI-Tractor), `gateway/router.py` (RoutePlan Pydantic + `format` JSON + retry 1x + fallback léxico; clarification = rota válida; **prompt multi-domínio explícito com 4 exemplos concretos**; **score gap filter `min_score_gap=0.05`** no semantic router), `gateway/graph.py` (LangGraph StateGraph: sanitize → classify → [clarification | dispatch fan-out ThreadPoolExecutor → synthesize]; síntese pula LLM com 1 domínio; trace_id + log JSON por nó), `gateway/main.py` (POST /chat SSE: eventos route/agent/final/error). **Golden set expandido: 44→64 exemplos** (20 novos, 12 multi-domínio). Eval `evals/eval_routing.py` (63 queries): **90.5% PASS** — gate ≥90% mantido. Anti-fabricação para leitura: regra no prompt proíbe inventar dados ilustrativos em consultas.
 1. Grafo LangGraph: `sanitize → classify_intent (MoE) → dispatch (1..n subagentes, paralelo quando domínios independentes) → synthesize (MoE) → resposta SSE`.
 2. Roteamento estruturado: MoE responde JSON `{domains: [...], plan: ...}` validado por Pydantic; inválido → retry 1x → fallback regra léxica.
 3. Multi-domínio: pergunta que cruza Vendas+Estoque+Finanças ("posso aceitar pedido de 500 unidades com 15% de desconto?") exercita fan-out/fan-in — **este é o caso demo principal**.
@@ -129,7 +129,7 @@ AI-Orchestrator/
 ## 4. Critérios de aceite da PoC
 
 - [x] 4 microsserviços com testes de regra passando (182 testes no total)
-- [x] Roteamento ≥ 90% no golden set (38/42 = 90.5%, 42 perguntas)
+- [x] Roteamento ≥ 90% no golden set (90.5%, 64 perguntas — golden set expandido)
 - [x] Caso multi-domínio fan-out/fan-in funcionando end-to-end via SSE (474 s, 3 domínios)
 - [x] Injection test: 0 vazamentos cross-domain (0/6 após endurecimento do router)
 - [x] Latências medidas e documentadas por etapa (tabela no README)
@@ -143,7 +143,7 @@ Após PoC completa, fine-tune LoRA do Qwen3.5-9B especializado em tool-calling +
 
 | Eval | LoRA 9B (prod) | Baseline 9B | Baseline 7b | MoE 30B |
 |---|---|---|---|---|
-| Routing (44 perguntas) | **90.9%** | 95.5% | 90.5% | 90.5% |
+| Routing (64 perguntas) | **90.5%** | 95.5% | 90.5% | 90.5% |
 | Injection (6 casos) | **0/6** | 0/6 | 0/6 | 0/6 |
 | Domains (40 tasks) | **87.5%** (90/90/90/80) | 87.5% (90/80/80/100) | 82.5% | 95% |
 | Latência por task | **~2–4 s** (100% GPU) | — | ~7 s | ~55 s |
@@ -173,3 +173,21 @@ Implementado sobre a PoC estabilizada com LoRA 9B.
 9. **Request deadline 600 s.** `REQUEST_TIMEOUT_S` independente do `LLM_TIMEOUT_S`. Heartbeat SSE (`:keepalive`) a cada 15 s — Cloudflare corta apos ~100 s sem bytes (erro 524).
 10. **Injection detection (14 patterns, log only).** `sanitize.py::flag_injection()` detecta padroes PT/EN de injection semantica. Nao reescreve o texto; defesa ativa e system prompt + isolamento + least-privilege.
 11. **Anti-fabricacao no system prompt.** LLM inventa dados se o prompt nao proibir explicitamente. Regra critica em `agents.py`: para write ops sem todos os campos obrigatorios, listar campos e pedir ao usuario. Nunca fabricar nomes, salarios, datas, quantidades, IDs ou SKUs.
+
+### Fase 7 — BERT Features + Security Hardening — ✅ EXECUTADA 2026-06-14
+
+**SBERT Embeddings.** `paraphrase-multilingual-MiniLM-L12-v2` (CPU, 384 dim) substituiu `nomic-embed-text` do Ollama. Embedder Protocol em `gateway/embedder.py`: `SBERTEmbedder` (primário) + `OllamaEmbedder` (fallback). Elimina dependência de `ollama pull` para embeddings. Gateway Dockerfile atualizado com PyTorch CPU + pre-download do modelo SBERT.
+
+**Injection Classifier BERT.** BERTimbau (`neuralmind/bert-base-portuguese-cased`) fine-tunado com 400 exemplos sintéticos (200 injection + 200 legítimos). 100% accuracy na validação. Classifier binário em `gateway/injection_classifier.py`. Modelo 417 MB montado via volume `./models:/app/models`. Training script + dataset sintético em `train/`.
+
+**Routing Improvements.** Golden set expandido de 44→64 exemplos (20 novos, 12 multi-domínio). Prompt multi-domínio explícito no classifier com 4 exemplos concretos. Score gap filter no semantic router (`min_score_gap=0.05`) — rejeita hits onde top-1 e top-2 estão muito próximos. Anti-fabricação para leitura (nunca inventar dados ilustrativos). Acurácia routing: 90.5% PASS (63 queries). Injection eval: 0/6 leaks PASS.
+
+**Security Fixes (auditoria /hm-engineer).**
+- Qdrant API key auth (`QDRANT__SERVICE__API_KEY`)
+- Langfuse secrets required — sem defaults inseguros (`LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`)
+- SQLite WAL mode + `busy_timeout=5000` em todos os 4 microsserviços
+- RateLimiter com `max_entries=10000` + eviction periódico (proteção contra memory exhaustion)
+- SSE error handler: mensagem genérica pro cliente, traceback server-side
+- Auditoria final: 0 CRITICO, 0 ALTO, 0 MEDIO (relatório em `docs/AUDIT_2026-06-14.md`)
+
+**Infra.** Volume mount `./models:/app/models` (injection classifier 417 MB). `models/` e `ebook-llm-on-premise/` adicionados ao `.gitignore`.

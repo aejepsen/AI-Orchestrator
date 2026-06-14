@@ -148,7 +148,7 @@ Antes de escrever qualquer código de produto:
 
 Camada kNN na frente do router LLM: robustez a paráfrase + latência menor em rota de alta confiança + demonstração de banco vetorial.
 
-- **Stack**: Qdrant em container (volume nomeado, porta só em 127.0.0.1, healthcheck TCP — imagem não tem curl) + embeddings locais via Ollama (`nomic-embed-text`, dim 768, ~274MB, `ollama pull` uma vez no volume). Cliente Qdrant via httpx REST puro — sem SDK pesado quando 4 endpoints bastam.
+- **Stack**: Qdrant em container (volume nomeado, porta só em 127.0.0.1, healthcheck TCP — imagem não tem curl, **API key auth via `QDRANT__SERVICE__API_KEY`**) + embeddings via SBERT (`paraphrase-multilingual-MiniLM-L12-v2`, dim 384, CPU, ~120 MB, roda no gateway sem dependência do Ollama) com fallback para Ollama (`nomic-embed-text`, dim 768). Embedder Protocol em `gateway/embedder.py`. Cliente Qdrant via httpx REST puro — sem SDK pesado quando 4 endpoints bastam.
 - **Fonte do índice = golden set de routing** (só casos sem clarification), upsert idempotente com hash da pergunta como point ID. Payload: `{domains, question}`.
 - **Sincronismo do índice com fonte mutável (RAG)**: upsert por hash sozinho não remove o que foi deletado da fonte — vetores fantasmas poluem a busca pra sempre. Toda reindexação grava os pontos com `batch_id` único no payload e, ao final, faz purge (delete por filtro) de todos os pontos com `batch_id` diferente do atual. Fonte estática (golden set) dispensa; fonte viva (docs, regras) exige.
 - **Pipeline em cascata**: 1º semantic (threshold) → 2º LLM classifier → 3º léxico. Guards determinísticos aplicados na saída de TODAS as camadas.
@@ -218,6 +218,24 @@ Incidentes reais encontrados durante a implementacao. Documentados como regra pa
 11. **Injection detection (14 patterns, log only).** `sanitize.py::flag_injection()` detecta padroes PT/EN de injection semantica (ex.: "ignore as instruções", "you are now", "act as", "system prompt", "reveal instructions"). Nao reescreve o texto — mutilar keywords destroi perguntas legitimas. Defesa ativa: system prompt + isolamento por tag + least-privilege de tools.
 
 12. **Anti-fabricacao no system prompt.** LLM inventa dados (nomes, salarios, datas, SKUs) se o prompt nao proibir explicitamente. Regra critica em `agents.py::_SYSTEM_PROMPT_TEMPLATE`: para write ops sem todos os campos obrigatorios fornecidos pelo usuario, o agente DEVE listar os campos e pedir os valores — nunca fabricar. Incidente real: sem a regra, agente criava funcionario com nome inventado ao receber "incluir um funcionario" sem detalhes.
+
+13. **SBERT substituiu nomic-embed-text para embeddings.** `paraphrase-multilingual-MiniLM-L12-v2` (384 dim, CPU, ~120 MB) roda no gateway via sentence-transformers — elimina dependencia do Ollama para embeddings. Embedder Protocol (`SBERTEmbedder` primario + `OllamaEmbedder` fallback) em `gateway/embedder.py`. Gateway Dockerfile atualizado com PyTorch CPU + pre-download SBERT. Dimensao 384 (antes 768 com nomic) — reindexar Qdrant ao migrar.
+
+14. **Injection classifier BERT fine-tunado.** BERTimbau (`neuralmind/bert-base-portuguese-cased`) treinado com 400 exemplos sinteticos (200 injection + 200 legitimos). 100% accuracy na validacao. Classifier binario em `gateway/injection_classifier.py`. Modelo 417 MB montado via volume `./models:/app/models` — nao versionar pesos no git (`models/` no `.gitignore`). Training script + dataset sintetico em `train/`. Segunda camada de defesa alem dos 14 regex patterns.
+
+15. **Score gap filter no semantic router.** `min_score_gap=0.05` rejeita hits onde top-1 e top-2 estao muito proximos (ambiguidade). Previne roteamento incorreto quando duas rotas competem com scores quase identicos. Configuravel via env.
+
+16. **Golden set expandido (44→64 exemplos).** 20 novos exemplos, 12 multi-dominio. Prompt multi-dominio explicito no classifier com 4 exemplos concretos. Anti-fabricacao para leitura: regra no prompt proibe inventar dados ilustrativos em consultas.
+
+17. **Qdrant API key auth.** `QDRANT__SERVICE__API_KEY` protege o banco vetorial — nao mais exposto sem autenticacao. Configurar no `.env`.
+
+18. **Langfuse secrets obrigatorios.** `LANGFUSE_NEXTAUTH_SECRET` e `LANGFUSE_SALT` sem defaults inseguros — compose e fail-closed. Gerar com `openssl rand -base64 32`.
+
+19. **SQLite WAL mode + busy_timeout em todos os microsservicos.** `PRAGMA journal_mode=WAL` + `PRAGMA busy_timeout=5000` na inicializacao de cada banco. Previne `database is locked` em fan-out concorrente com escrita.
+
+20. **RateLimiter com max_entries + eviction.** `max_entries=10000` + eviction periodico de entries expiradas. Protecao contra memory exhaustion por IP spoofing/DDoS distribuido.
+
+21. **SSE error handler sanitizado.** Mensagem generica pro cliente ("Erro interno. Tente novamente."), traceback completo server-side no log. Stack traces nunca expostos no stream SSE.
 
 ## Fase 7 (opcional) — Fine-tune por destilação (LoRA)
 

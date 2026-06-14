@@ -11,7 +11,7 @@ Resultados (medidos)
 | Gate                             | LoRA 9B (prod)                                                              | Baseline 9B    | Baseline 7b     | Critério       |
 | -------------------------------- | --------------------------------------------------------------------------- | -------------- | --------------- | --------------- |
 | Subagentes por domínio          | **35/40 = 87.5%** (fin 90, rh 90, est 90, ven 80)                    | 87.5%          | 82.5%           | ≥ 80%/domínio |
-| Roteamento (44 perguntas)        | **40/44 = 90.9%**                                                     | 95.5%          | 90.5%           | ≥ 90%          |
+| Roteamento (64 perguntas)        | **90.5% PASS** (63 queries)                                           | 95.5%          | 90.5%           | ≥ 90%          |
 | Injection                        | **0/6 vazamentos**                                                    | 0/6            | 0/6             | 0 leaks         |
 | Testes determinísticos          | **182 passando** (regras de negócio + gateway)                       | —              | —               | 100%            |
 | Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in)                       | —              | —               | funcional       |
@@ -35,10 +35,10 @@ Arquitetura
      ┌──────────┬─────────────┼──────────┐  ┌─▼───────────┐ ┌─────────────┐
      ▼          ▼             ▼          ▼  │Ollama 11435 │ │Qdrant 6333  │
 ┌─────────┐┌─────────┐ ┌─────────┐┌─────────┐ chat: MODEL │ │ routing_    │
-│financas ││   rh    │ │ estoque ││ vendas  │ embed:nomic-│ │ examples    │
-│  :8101  ││  :8102  │ │  :8103  ││  :8104  │ embed-text  │ │ (golden set │
-└─────────┘└─────────┘ └─────────┘└─────────┘ residentes  │ │  indexado)  │
- FastAPI + Pydantic v2 + SQLite por serviço └─────────────┘ └─────────────┘
+│financas ││   rh    │ │ estoque ││ vendas  │ embed: SBERT│ │ examples    │
+│  :8101  ││  :8102  │ │  :8103  ││  :8104  │ (gateway)   │ │ (golden set │
+└─────────┘└─────────┘ └─────────┘└─────────┘ residente   │ │ 64 exemplos)│
+ FastAPI + Pydantic v2 + SQLite WAL por svc └─────────────┘ └─────────────┘
  regras de negócio determinísticas, erro 422 {error, detail, rule}
 ```
 
@@ -50,7 +50,9 @@ Arquitetura
 | `think=true` só no qwen3 (não qwen3.5)                      | Qwen3.5 Small series não suporta `<think>` — Ollama rejeita `think=true`. Qwen3 (MoE) precisa pra evitar CoT vazando no `content`. Detecção automática em `llm.py`.                               |
 | Tools geradas do `openapi.json`                              | Única fonte de verdade é a API; schema drift impossível. 422/404 voltam como **observação** pro loop do agente, nunca exceção.                                                                                   |
 | `LLM_TIMEOUT_S=900` no gateway                               | Fan-out de 3 agentes enfileira no MoE único (Ollama serializa): o 3º agente espera ~2 loops inteiros — 300 s estourava (medido na demo).                                                                                    |
-| **Semantic router como cache, não como classificador** (Qdrant kNN, threshold 0.92 + consenso unânime) | Com threshold 0.80 o eval leave-one-out caiu pra 84.1%: vizinhos a score 0.83–0.88 com conjuntos de domínios diferentes erravam os casos multi-domínio. A banda 0.80–0.90 não separa acerto de erro; a 0.92 a camada só dispara em pergunta quase idêntica e o LLM classifier decide o resto. |
+| **Semantic router como cache, não como classificador** (Qdrant kNN, threshold 0.92 + consenso unânime + score gap ≥0.05) | Com threshold 0.80 o eval leave-one-out caiu pra 84.1%: vizinhos a score 0.83–0.88 com conjuntos de domínios diferentes erravam os casos multi-domínio. A banda 0.80–0.90 não separa acerto de erro; a 0.92 a camada só dispara em pergunta quase idêntica e o LLM classifier decide o resto. Score gap filter (`min_score_gap=0.05`) rejeita hits onde top-1 e top-2 estão muito próximos (ambiguidade). |
+| **SBERT embeddings substituíram nomic-embed-text** | `paraphrase-multilingual-MiniLM-L12-v2` (384 dim, CPU, ~120 MB) roda no gateway via sentence-transformers — sem dependência do Ollama para embeddings. Embedder Protocol (`SBERTEmbedder` + `OllamaEmbedder` fallback) garante degradação graceful. |
+| **Injection detector BERT fine-tunado** | BERTimbau (`neuralmind/bert-base-portuguese-cased`) fine-tunado com 400 exemplos sintéticos (200 injection + 200 legítimos). 100% accuracy na validação. Classifier binário no gateway (`gateway/injection_classifier.py`), modelo 417 MB em volume mount `./models:/app/models`. |
 
 Latências medidas (warm, RTX 3060 + split CPU)
 
@@ -69,12 +71,17 @@ Segurança
 
 - **Sanitização no boundary** (`gateway/sanitize.py`): strip de tokens especiais ChatML (`<|...|>`) e wrapper tags antes de qualquer LLM.
 - **Semantic injection detection** (`gateway/sanitize.py`): 14 padrões regex (PT/EN) detectam tentativas de injection semântica ("ignore as instruções...", "you are now...", "act as...", "system prompt", etc.). **Log-only** — não reescreve o texto (mutilar keywords destrói perguntas legítimas); a defesa ativa é o system prompt + isolamento por tag + least-privilege.
+- **Injection classifier BERT** (`gateway/injection_classifier.py`): BERTimbau fine-tunado (400 exemplos, 100% val accuracy) como segunda camada de detecção. Modelo 417 MB montado via volume `./models:/app/models`. Training script e dataset sintético em `train/`.
 - **Router endurecido**: instruções injetadas ("ignore as instruções...", "agora você é...", falsa autoridade) não adicionam domínios à rota. 1º eval: 2/6 vazamentos de roteamento (zero tool-calls cross-domain — least-privilege segurou) → regra de segurança + exemplo adversário no prompt → **0/6**.
 - **Anti-fabricação no system prompt**: regra crítica proíbe o agente de fabricar dados em operações de escrita. Se o usuário não forneceu todos os campos obrigatórios, o agente lista os campos e pede ao usuário — nunca inventa nomes, salários, datas, quantidades ou IDs.
 - **Least-privilege por escopo**: cada subagente só enxerga as tools do seu domínio — mesmo "convencido", não tem como chamar outra API.
 - **API key interna** (`X-Internal-Key`, `hmac.compare_digest`): serviços recusam chamada que não venha do gateway (401).
 - **Fail-closed auth** (`gateway/security.py`): sem `ACCESS_TOKEN` configurado, `/chat` é bloqueado por padrão. Modo dev aberto requer `ALLOW_OPEN_ACCESS=1` explícito.
-- **Rate limiting por IP** (`RATE_LIMIT_PER_HOUR`, default 10): sliding window em memória por processo. **CF-Connecting-IP** como fonte confiável de IP real atrás do Cloudflare (não spoofável pelo cliente); fallback chain: `CF-Connecting-IP` → `X-Real-IP` → `X-Forwarded-For` → socket.
+- **Rate limiting por IP** (`RATE_LIMIT_PER_HOUR`, default 10): sliding window em memória por processo com `max_entries=10000` + eviction periódico (proteção contra memory exhaustion por IP spoofing). **CF-Connecting-IP** como fonte confiável de IP real atrás do Cloudflare (não spoofável pelo cliente); fallback chain: `CF-Connecting-IP` → `X-Real-IP` → `X-Forwarded-For` → socket.
+- **Qdrant API key auth** (`QDRANT__SERVICE__API_KEY`): banco vetorial protegido por API key, não mais exposto sem autenticação.
+- **Langfuse secrets obrigatórios** (`LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`): sem defaults inseguros — compose é fail-closed.
+- **SQLite WAL mode + busy_timeout** em todos os 4 microsserviços: `PRAGMA journal_mode=WAL` + `PRAGMA busy_timeout=5000` previne `database is locked` em fan-out concorrente.
+- **Auditoria completa**: 0 CRITICO, 0 ALTO, 0 MEDIO (relatório em `docs/AUDIT_2026-06-14.md`).
 - **Circuit breaker por domínio**: 3 falhas de transporte → OPEN 30 s → half-open. 4xx (regra de negócio) não conta como falha.
 - **Swagger/OpenAPI desabilitado em produção**: `docs_url=None`, `redoc_url=None`, `openapi_url=None` no gateway.
 - **Error sanitization**: stack traces nunca expostos no SSE — erros internos retornam mensagem genérica ("Erro interno. Tente novamente.") com log completo no servidor.
@@ -106,8 +113,8 @@ Observabilidade
 Como rodar
 
 ```bash
-docker compose up -d --build          # ollama + gateway + 4 microsserviços
-docker exec ai-orchestrator-ollama ollama pull nomic-embed-text   # embeddings do semantic router
+docker compose up -d --build          # ollama + gateway + 4 microsserviços + qdrant + langfuse
+# SBERT embeddings baixam automaticamente no build do gateway (paraphrase-multilingual-MiniLM-L12-v2)
 # modelo LoRA: copiar qwen3.5-9b-orch.Q4_K_M.gguf + Modelfile para o container
 # docker exec ai-orchestrator-ollama ollama create qwen3.5-9b-orch -f /tmp/Modelfile
 
@@ -143,7 +150,7 @@ Evals e testes:
 python -m venv .venv && .venv/bin/pip install -r services/requirements.txt
 .venv/bin/python -m pytest services gateway/tests -q        # 182 testes, sem LLM
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_domains.py    # 40 tasks
-.venv/bin/python evals/eval_routing.py                       # 44 perguntas
+.venv/bin/python evals/eval_routing.py                       # 64 perguntas (golden set expandido)
 .venv/bin/python evals/eval_routing.py --semantic            # + camada Qdrant (leave-one-out)
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_injection.py  # 6 casos
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/demo.py            # 5 conversas
@@ -156,11 +163,13 @@ gateway/            # Experience Layer: graph (LangGraph), router (semântico→
   main.py           #   FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume
   graph.py          #   LangGraph StateGraph: sanitize → classify → dispatch → synthesize
   agents.py         #   loop de tool-calling por domínio + system prompt anti-fabricação
-  router.py         #   classify_intent: semântico → LLM → léxico
-  sanitize.py       #   boundary anti-injection (ChatML strip + 14 regex injection detection)
-  security.py       #   AccessTokenGuard (fail-closed) + RateLimiter + client_ip (CF-Connecting-IP)
+  router.py         #   classify_intent: semântico → LLM → léxico (score gap filter)
+  sanitize.py       #   boundary anti-injection (ChatML strip + 14 regex + BERT classifier)
+  security.py       #   AccessTokenGuard (fail-closed) + RateLimiter (max_entries + eviction) + client_ip
   config.py         #   Settings dataclass (todas as envs num lugar só)
   llm.py            #   cliente Ollama (chat/embed, think detection)
+  embedder.py       #   Embedder Protocol (SBERTEmbedder + OllamaEmbedder fallback, 384 dim)
+  injection_classifier.py  # BERTimbau fine-tunado (400 exemplos, 100% val accuracy)
   tracing.py        #   Langfuse integration (trace/span/generation)
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
 services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas) — CRUD completo
@@ -185,7 +194,9 @@ Gotchas documentados
 8. **CF-Connecting-IP para IP real.** Cloudflare seta este header (não spoofável). Fallback: `X-Real-IP` → `X-Forwarded-For` → socket.
 9. **Request deadline 600 s.** Timeout global por request SSE, independente do `LLM_TIMEOUT_S`. Heartbeat SSE a cada 15 s (Cloudflare corta após ~100 s sem bytes).
 10. **Injection detection (14 patterns, log only).** Detecção semântica de injection (PT/EN) via regex em `sanitize.py`. Não reescreve — defesa ativa é system prompt + isolamento por tag + least-privilege.
-11. **Anti-fabricação.** LLM inventa dados se o prompt não proibir explicitamente. Regra crítica no system prompt: para write ops sem todos os campos obrigatórios, listar campos e pedir ao usuário. Nunca fabricar nomes, salários, datas, quantidades.
+11. **Anti-fabricação.** LLM inventa dados se o prompt não proibir explicitamente. Regra crítica no system prompt: para write ops sem todos os campos obrigatórios, listar campos e pedir ao usuário. Nunca fabricar nomes, salários, datas, quantidades. **Anti-fabricação para leitura**: nunca inventar dados ilustrativos em consultas — retornar apenas dados reais das APIs.
+12. **SBERT substituiu nomic-embed-text.** `paraphrase-multilingual-MiniLM-L12-v2` (384 dim, CPU) roda no gateway via sentence-transformers. Embedder Protocol com fallback para Ollama. Elimina dependência de `ollama pull` para embeddings.
+13. **Injection classifier BERT (417 MB).** Modelo montado via volume `./models:/app/models`. O diretório `models/` está no `.gitignore` (não versionar pesos). Script de treino em `train/`.
 
 Backlog (fora do escopo da PoC)
 

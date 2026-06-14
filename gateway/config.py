@@ -67,7 +67,7 @@ class Settings:
     thread_db_path: str = field(default_factory=lambda: os.environ.get("THREAD_DB_PATH", "/tmp/threads.db"))
     # Injection Detector (BERTimbau fine-tunado). Desabilita com INJECTION_DETECTOR_ENABLED=0.
     injection_model: str = field(
-        default_factory=lambda: os.environ.get("INJECTION_MODEL", "models/injection_classifier")
+        default_factory=lambda: os.environ.get("INJECTION_MODEL", "/app/models/injection_classifier")
     )
     injection_threshold: float = field(
         default_factory=lambda: float(os.environ.get("INJECTION_THRESHOLD", "0.7"))

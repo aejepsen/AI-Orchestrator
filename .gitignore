@@ -8,3 +8,5 @@ __pycache__/
 train/dataset/
 *.gguf
 Modelfile
+models/
+ebook-llm-on-premise/

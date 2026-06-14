@@ -50,6 +50,13 @@ services:
       - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
       - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-1}
       - SEMANTIC_THRESHOLD=${SEMANTIC_THRESHOLD:-0.92}
+      # SBERT: embeddings locais em CPU (substitui nomic-embed-text no Ollama).
+      - SBERT_MODEL=${SBERT_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+      - SBERT_CACHE_DIR=/app/models
+      # Injection detector: BERTimbau classifier (fallback: regex patterns).
+      - INJECTION_MODEL=${INJECTION_MODEL:-models/injection_classifier}
+      - INJECTION_THRESHOLD=${INJECTION_THRESHOLD:-0.7}
+      - INJECTION_DETECTOR_ENABLED=${INJECTION_DETECTOR_ENABLED:-1}
       # Langfuse: observabilidade LLM (traces, generations, scores).
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-pk-lf-local}

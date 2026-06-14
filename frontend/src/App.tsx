@@ -5,6 +5,7 @@ import { AgentSkeleton } from "./components/AgentSkeleton";
 import { Composer } from "./components/Composer";
 import { ConfirmCard } from "./components/ConfirmCard";
 import { Dashboard } from "./components/Dashboard";
+import { EvalDashboard } from "./components/EvalDashboard";
 import { Pipeline, type Stage } from "./components/Pipeline";
 import { RouteChips } from "./components/RouteChips";
 import { Unlock } from "./components/Unlock";
@@ -255,6 +256,7 @@ export default function App() {
   if (!unlocked) return <Unlock error={authError} onUnlock={unlock} />;
 
   const isDashboard = route === "/dashboard" || route === "dashboard";
+  const isEvals = route === "/evals" || route === "evals";
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -264,16 +266,36 @@ export default function App() {
           <p className="text-xs text-faint">Gateway multi-agente on-premise</p>
           <div className="ml-auto flex items-center gap-2">
             <a
-              href={isDashboard ? "#/" : "#/dashboard"}
+              href="#/"
+              className={`self-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                !isDashboard && !isEvals
+                  ? "border-emerald-400/30 text-emerald-400 hover:border-emerald-400/50"
+                  : "border-line text-muted hover:border-emerald-400/40 hover:text-ink"
+              }`}
+            >
+              Chat
+            </a>
+            <a
+              href="#/dashboard"
               className={`self-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                 isDashboard
                   ? "border-emerald-400/30 text-emerald-400 hover:border-emerald-400/50"
                   : "border-line text-muted hover:border-emerald-400/40 hover:text-ink"
               }`}
             >
-              {isDashboard ? "Chat" : "Dashboard"}
+              Dashboard
             </a>
-            {!isDashboard && (
+            <a
+              href="#/evals"
+              className={`self-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                isEvals
+                  ? "border-emerald-400/30 text-emerald-400 hover:border-emerald-400/50"
+                  : "border-line text-muted hover:border-emerald-400/40 hover:text-ink"
+              }`}
+            >
+              Evals
+            </a>
+            {!isDashboard && !isEvals && (
               <button
                 onClick={() => {
                   const newTid = crypto.randomUUID();
@@ -301,6 +323,10 @@ export default function App() {
       {isDashboard ? (
         <main className="flex-1">
           <Dashboard />
+        </main>
+      ) : isEvals ? (
+        <main className="flex-1">
+          <EvalDashboard />
         </main>
       ) : (
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
@@ -383,7 +409,7 @@ export default function App() {
       </main>
       )}
 
-      {!isDashboard && (
+      {!isDashboard && !isEvals && (
       <footer className="sticky bottom-0 z-10 border-t border-line bg-bg/85 backdrop-blur">
         <div className="mx-auto w-full max-w-3xl px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
           <Composer disabled={busy} onSend={send} onStop={stop} />

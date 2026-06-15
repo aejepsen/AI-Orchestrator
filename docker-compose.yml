@@ -59,13 +59,14 @@ services:
       - INJECTION_THRESHOLD=${INJECTION_THRESHOLD:-0.7}
       - INJECTION_DETECTOR_ENABLED=${INJECTION_DETECTOR_ENABLED:-1}
       # Langfuse: observabilidade LLM (traces, generations, scores).
-      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-pk-lf-local}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-sk-lf-local}
       - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-1}
       - THREAD_DB_PATH=/tmp/threads.db
     volumes:
       - ./models:/app/models
+      - ./evals/results:/app/evals/results:ro
     depends_on:
       ollama:
         condition: service_started

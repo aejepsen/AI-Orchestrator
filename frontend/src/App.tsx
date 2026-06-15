@@ -295,7 +295,14 @@ export default function App() {
             >
               Evals
             </a>
-            {!isDashboard && !isEvals && (
+            {isDashboard || isEvals ? (
+              <a
+                href="#/"
+                className="self-center rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-emerald-400/40 hover:text-ink"
+              >
+                ← Início
+              </a>
+            ) : (
               <button
                 onClick={() => {
                   const newTid = crypto.randomUUID();

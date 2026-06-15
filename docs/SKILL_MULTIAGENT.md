@@ -165,10 +165,12 @@ Camada kNN na frente do router LLM: robustez a paráfrase + latência menor em r
 
 Logs estruturados mostram que algo aconteceu. **Tracing LLM mostra por quê.** Cada chamada ao modelo deve registrar: prompt completo, response, tokens in/out, latência, modelo, temperatura, tool calls. Sem isso, debugar "por que o agente roteou errado" ou "por que gastou 4 iterações" é arqueologia em logs.
 
-- **Solução recomendada: Langfuse self-hosted** (container no compose, Postgres próprio, UI web). Zero-cloud, open source, SDK Python leve (`langfuse`). Alternativa: OpenTelemetry GenAI spans — mais genérico, menos dashboard pronto.
+- **Solução recomendada: Langfuse Cloud** (`LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}`). SDK Python leve (`langfuse`), zero infra de observabilidade. Containers Langfuse v2 self-hosted + Postgres mantidos no compose como fallback (basta alterar `LANGFUSE_HOST`). Alternativa: OpenTelemetry GenAI spans — mais genérico, menos dashboard pronto.
 - **Onde instrumentar**: `llm.py` (decorator/wrapper em `chat()` e `embed()`), `graph.py` (span por nó do grafo), `agents.py` (span por iteração do loop). Cada request do `/chat` é um trace; cada nó é um span filho. O `trace_id` já existente no gateway vira o `trace_id` do Langfuse.
 - **Custo por request como métrica de produto**: derive dos tokens rastreados. Tokens in/out × custo por token (mesmo on-premise: tempo de GPU tem preço). Agregar por usuário/dia/domínio. Em API isso é fatura; em local é dimensionamento de capacidade. Dashboard do Langfuse já mostra isso nativamente.
 - **Eval scoring no Langfuse**: vincular resultados dos evals (routing, domains, injection) aos traces — permite correlacionar score com prompt/modelo/config sem grep manual.
+- **Métricas agregadas no gateway**: `gateway/metrics.py` agrega traces Langfuse (latências, tokens, custo) com cache de 30 s → endpoint `GET /metrics` (auth-guarded). `gateway/eval_results.py` agrega routing accuracy + injection F1 de `evals/results/*.json` com cache de 60 s → endpoint `GET /eval-results` (auth-guarded). Volume `./evals/results:/app/evals/results:ro` montado read-only no container gateway.
+- **Frontend Dashboard e Evals**: frontend com 3 páginas — Chat (trace ao vivo), Dashboard (métricas Langfuse via GET /metrics), Evals (routing/injection via GET /eval-results). Navegação: Chat | Dashboard | Evals | Nova conversa/← Início | Apresentação.
 
 ### Human-in-the-Loop (HITL) — implementar segundo
 
@@ -201,7 +203,7 @@ Incidentes reais encontrados durante a implementacao. Documentados como regra pa
 
 3. **Null payload no interrupt.** Quando `interrupt()` suspende o grafo, o stream pode yieldar payloads `None`. Codigo como `"final_answer" in None` dispara TypeError. Regra: sempre guardar com `if not payload: continue` antes de acessar campos do payload no worker/stream handler.
 
-4. **Langfuse v3 vs v2.** Langfuse v3 exige ClickHouse como backend — overhead inaceitavel para PoC. Usar `langfuse/langfuse:2` (Postgres only). Detalhes de container: imagem nao tem wget/curl, healthcheck via `node -e "require('http')..."`. Variavel `HOSTNAME=0.0.0.0` obrigatoria (Next.js bind — sem ela, escuta so em 127.0.0.1 dentro do container).
+4. **Langfuse Cloud (default) / v2 self-hosted (fallback).** Gateway conecta ao Langfuse Cloud (`us.cloud.langfuse.com`) por padrao — zero infra de observabilidade. Containers Langfuse v2 + Postgres mantidos no compose como fallback local (basta alterar `LANGFUSE_HOST`). Langfuse v3 exige ClickHouse — overhead inaceitavel. Detalhes do container fallback: imagem nao tem wget/curl, healthcheck via `node -e "require('http')..."`. Variavel `HOSTNAME=0.0.0.0` obrigatoria (Next.js bind).
 
 5. **HITL scoping.** `interrupt()` sem deteccao de intent (write vs read) dispara para toda query, incluindo leituras. Isso trava o fluxo em perguntas que nao executam acoes destrutivas. Regra: desabilitar HITL por padrao; ativar so quando houver deteccao confiavel de write intent. Auto-aprovar sem callback e a estrategia segura ate a deteccao existir.
 

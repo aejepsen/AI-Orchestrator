@@ -29,7 +29,7 @@ AI-Orchestrator/
 ├── PROPOSAL.md / PLANO_EXECUCAO.md
 ├── docker-compose.yml            # ollama, gateway, 4 microsserviços, qdrant, langfuse
 ├── gateway/                      # Experience Layer
-│   ├── main.py                   # FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume
+│   ├── main.py                   # FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume, GET /metrics, GET /eval-results
 │   ├── graph.py                  # LangGraph StateGraph: sanitize → classify → dispatch → synthesize
 │   ├── agents.py                 # loop tool-calling por domínio + system prompt anti-fabricação
 │   ├── router.py                 # classify_intent: semântico → LLM → léxico
@@ -39,14 +39,16 @@ AI-Orchestrator/
 │   ├── config.py                 # Settings dataclass (todas as envs)
 │   ├── embedder.py               # Embedder Protocol (SBERTEmbedder + OllamaEmbedder fallback, 384 dim)
 │   ├── injection_classifier.py   # BERTimbau fine-tunado (400 exemplos, 100% val accuracy)
-│   ├── tracing.py                # Langfuse integration (trace/span/generation)
+│   ├── tracing.py                # Langfuse integration (trace/span/generation) — Cloud default
+│   ├── metrics.py                # Langfuse trace aggregation (30s cache) → GET /metrics
+│   ├── eval_results.py           # Routing accuracy + injection F1 from evals/results/*.json (60s cache) → GET /eval-results
 │   └── tools/                    # registry OpenAPI→tools + circuit breaker
 ├── services/
 │   ├── financas/  (main.py, rules.py, db.py, seed.py, tests/) — CRUD completo
 │   ├── rh/        ...
 │   ├── estoque/   ...
 │   └── vendas/    ...
-├── frontend/                     # Chat single-page (Vite + React + Tailwind v4)
+├── frontend/                     # 3 páginas (Vite + React + Tailwind v4): Chat, Dashboard, Evals
 ├── evals/
 │   ├── golden_routing.jsonl      # intenção → domínio esperado
 │   ├── eval_routing.py           # gate de acurácia de roteamento
@@ -156,7 +158,9 @@ Após PoC completa, fine-tune LoRA do Qwen3.5-9B especializado em tool-calling +
 
 Implementado sobre a PoC estabilizada com LoRA 9B.
 
-**Langfuse observability.** `gateway/tracing.py`: trace por request, span por no do grafo, generation por chamada LLM. Container Langfuse v2 + Postgres dedicado no `docker-compose.yml` (porta 3100). Degradacao graceful: Langfuse fora nao impacta requests.
+**Langfuse observability.** `gateway/tracing.py`: trace por request, span por no do grafo, generation por chamada LLM. Gateway conecta ao **Langfuse Cloud** (`LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}`) por padrao. Containers Langfuse v2 + Postgres mantidos no `docker-compose.yml` como fallback local. Degradacao graceful: Langfuse fora nao impacta requests. `gateway/metrics.py` agrega traces Langfuse (cache 30 s) → `GET /metrics`. `gateway/eval_results.py` agrega routing accuracy + injection F1 de `evals/results/*.json` (cache 60 s) → `GET /eval-results`. Ambos endpoints auth-guarded. Volume `./evals/results:/app/evals/results:ro` montado read-only no gateway.
+
+**Frontend 3 paginas.** Chat (trace multi-agente ao vivo), Dashboard (metricas Langfuse via GET /metrics), Evals (routing/injection via GET /eval-results). Nav: Chat | Dashboard | Evals | Nova conversa/← Inicio | Apresentacao.
 
 **HITL (Human-in-the-Loop).** No `confirm_dispatch` entre classify e dispatch. Usa `interrupt()` nativo do LangGraph. Evento SSE `confirm` com preview da acao. Endpoint `POST /chat/{thread_id}/resume` para retomar. Frontend: `ConfirmCard.tsx`. **Desabilitado por padrao** — sem deteccao de write vs read intent, dispara para toda query. Auto-aprova sem callback.
 

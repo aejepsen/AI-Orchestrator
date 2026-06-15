@@ -104,7 +104,11 @@ Observabilidade
 
 `trace_id` por request propagado pelo grafo; log JSON estruturado por no (no, latencia, dominios). Eventos SSE em tempo real: `route` -> `agent` (um por subagente concluido) -> `final`.
 
-**Langfuse tracing** (porta 3100): trace por request, span por no do grafo, generation por chamada LLM. Container Langfuse v2 self-hosted + Postgres dedicado. Degradacao graceful — Langfuse fora nao bloqueia requests.
+**Langfuse tracing** (Cloud): trace por request, span por no do grafo, generation por chamada LLM. Gateway conecta ao **Langfuse Cloud** (`LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}`) por padrao. Containers Langfuse v2 self-hosted + Postgres permanecem no `docker-compose.yml` como fallback (basta alterar `LANGFUSE_HOST`). Degradacao graceful — Langfuse fora nao bloqueia requests.
+
+**Endpoints de metricas e evals (auth-guarded):**
+- `GET /metrics` — metricas agregadas do Langfuse (traces, latencias, tokens, custo). Cache de 30 s. Servido por `gateway/metrics.py`.
+- `GET /eval-results` — resultados agregados de routing accuracy + injection F1 a partir de `evals/results/*.json`. Cache de 60 s. Servido por `gateway/eval_results.py`. Volume `./evals/results:/app/evals/results:ro` montado read-only no container gateway.
 
 **Estado conversacional**: `MemorySaver` checkpointer com `thread_id` por sessao. Frontend persiste thread em localStorage; botao "Nova conversa" reseta contexto.
 
@@ -125,7 +129,13 @@ curl -N -X POST localhost:8100/chat -H 'content-type: application/json' \
 
 Interface web
 
-Chat single-page (Vite + React + Tailwind v4) servido pelo próprio gateway: o trace multi-agente é renderizado ao vivo — chips de roteamento por domínio, um card por subagente concluído (fan-out visível) e a síntese final, com cronômetro honesto para a latência do modelo local.
+3 páginas (Vite + React + Tailwind v4) servidas pelo próprio gateway:
+
+- **Chat** — trace multi-agente ao vivo: chips de roteamento por domínio, card por subagente concluído (fan-out visível), síntese final, cronômetro honesto para a latência do modelo local.
+- **Dashboard** — métricas Langfuse (traces, latências, tokens, custo) via `GET /metrics` com cache 30 s.
+- **Evals** — routing accuracy + injection F1 via `GET /eval-results`, agregados de `evals/results/*.json` com cache 60 s.
+
+Navegação: **Chat | Dashboard | Evals | Nova conversa/← Início | Apresentação**.
 
 ```bash
 # desenvolvimento (proxy /chat → gateway em :8100)
@@ -160,7 +170,7 @@ Estrutura
 
 ```
 gateway/            # Experience Layer: graph (LangGraph), router (semântico→LLM→léxico), agents, sanitize, SSE
-  main.py           #   FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume
+  main.py           #   FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume, GET /metrics, GET /eval-results
   graph.py          #   LangGraph StateGraph: sanitize → classify → dispatch → synthesize
   agents.py         #   loop de tool-calling por domínio + system prompt anti-fabricação
   router.py         #   classify_intent: semântico → LLM → léxico (score gap filter)
@@ -170,10 +180,12 @@ gateway/            # Experience Layer: graph (LangGraph), router (semântico→
   llm.py            #   cliente Ollama (chat/embed, think detection)
   embedder.py       #   Embedder Protocol (SBERTEmbedder + OllamaEmbedder fallback, 384 dim)
   injection_classifier.py  # BERTimbau fine-tunado (400 exemplos, 100% val accuracy)
-  tracing.py        #   Langfuse integration (trace/span/generation)
+  tracing.py        #   Langfuse integration (trace/span/generation) — Cloud default
+  metrics.py        #   Langfuse trace aggregation (30s cache) → GET /metrics
+  eval_results.py   #   Routing accuracy + injection F1 from evals/results/*.json (60s cache) → GET /eval-results
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
 services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas) — CRUD completo
-frontend/           # Chat single-page (Vite + React + Tailwind v4)
+frontend/           # 3 páginas (Vite + React + Tailwind v4): Chat, Dashboard, Evals
 evals/              # golden sets + gates (domains, routing, injection, demo)
 train/              # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
 docs/               # PLANO_LORA_9B.md (treino + resultados), SKILL_MULTIAGENT.md
@@ -187,7 +199,7 @@ Gotchas documentados
 1. **`threading.local()` para callbacks.** Lambdas (`on_agent`, `on_confirm`, trace) movidos de GraphState para `threading.local()` — MemorySaver/checkpointer não serializa funções (TypeError no msgpack).
 2. **Estado residual entre turns.** Com checkpointer, `final_answer` do turn anterior persiste e engana conditional edges. Fix: `_sanitize` limpa campos de resultado a cada novo turn.
 3. **Null payload no interrupt.** `interrupt()` pode yieldar payloads `None` no stream. Guard: `if not payload: continue`.
-4. **Langfuse v2 (v3 requer ClickHouse).** Pin para `langfuse/langfuse:2`. Healthcheck: `node -e "require('http')..."`. `HOSTNAME=0.0.0.0` obrigatório (Next.js bind).
+4. **Langfuse Cloud (default) / v2 self-hosted (fallback).** Gateway conecta ao Langfuse Cloud (`us.cloud.langfuse.com`) por padrão. Containers Langfuse v2 + Postgres mantidos no compose para fallback local (basta alterar `LANGFUSE_HOST`). Pin `langfuse/langfuse:2` (v3 requer ClickHouse).
 5. **HITL desabilitado.** Sem detecção de write intent, `interrupt()` dispara para toda query (incluindo leituras). Auto-aprova sem callback até a detecção existir.
 6. **COLLATE NOCASE para case-sensitivity SQLite.** LLMs enviam parâmetros em lowercase; SQLite default é case-sensitive. Todo filtro textual nos microsserviços usa `COLLATE NOCASE`.
 7. **Fail-closed auth (`ALLOW_OPEN_ACCESS`).** Sem `ACCESS_TOKEN`, `/chat` é bloqueado. Modo dev aberto requer `ALLOW_OPEN_ACCESS=1` explícito.

@@ -117,8 +117,9 @@ def _seed(session) -> dict[str, int]:  # noqa: ANN001
     """Popula Neo4j. Retorna contagem de entidades e relações criadas."""
     counts: dict[str, int] = {"entities": 0, "relations": 0}
 
-    # ── Constraint ────────────────────────────────────────────────────
+    # ── Constraint + índices ──────────────────────────────────────────
     session.run(_CONSTRAINT)
+    session.run("CREATE INDEX entity_sku IF NOT EXISTS FOR (e:Entity) ON (e.sku)")
 
     # ── Categorias (estoque) ──────────────────────────────────────────
     for cat in _CATEGORIES:

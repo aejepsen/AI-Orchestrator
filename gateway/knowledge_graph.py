@@ -64,8 +64,12 @@ _EXPAND_TOOL = ToolSpec(
 )
 
 # Cypher parametrizado — LIMIT por domínio, DISTINCT, sem injeção.
+# Match por name OU sku (enricher extrai SKUs, seed armazena nomes descritivos).
 _EXPAND_CYPHER = """\
-MATCH (e:Entity {name: $entity_name, type: $entity_type})-[r*1..2]->(related:Entity)
+MATCH (e:Entity)
+WHERE (e.name = $entity_name OR e.sku = $entity_name) AND e.type = $entity_type
+WITH e
+MATCH (e)-[r*1..2]-(related:Entity)
 WHERE ($target_domain = '' OR related.domain = $target_domain)
 WITH DISTINCT related, [rel IN r | type(rel)] AS path_types
 RETURN related.name AS name,

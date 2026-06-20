@@ -335,6 +335,40 @@ class GatewayGraph:
 
         return {}
 
+    def _kg_context_block(self, state: GraphState) -> str:
+        """Expande entidades detectadas pelo enricher via KG e monta bloco de contexto.
+
+        Chamado antes do dispatch para injetar contexto relacional na task do agente.
+        Modelo 9b não chama expand_context sozinho; injeção automática garante valor.
+        """
+        if not self._knowledge_graph:
+            return ""
+        entities = (state.get("_context_signals") or {}).get("recent_entities", [])
+        if not entities:
+            return ""
+
+        # Inferir entity_type dos patterns conhecidos do enricher.
+        from gateway.query_enricher import _SKU_RE, _CPF_RE, _ORDER_ID_RE
+
+        all_related: list[str] = []
+        for ent in entities[:3]:  # limitar expansão
+            if _SKU_RE.match(ent):
+                etype = "produto"
+            elif _CPF_RE.match(ent):
+                etype = "funcionario"
+            elif _ORDER_ID_RE.match(ent):
+                etype = "pedido"
+            else:
+                continue
+            result = self._knowledge_graph.expand(ent, etype)
+            for rel in result.get("body", {}).get("related", []):
+                all_related.append(f"  - {rel['name']} ({rel['type']}, {rel['domain']})")
+
+        if not all_related:
+            return ""
+        block = "\n".join(all_related[:10])
+        return f"\n\n(Contexto do grafo de conhecimento — entidades relacionadas:\n{block})"
+
     def _dispatch(self, state: GraphState) -> GraphState:
         started = time.monotonic()
         trace: TraceHandle | None = getattr(self._local, "trace", None)
@@ -345,6 +379,13 @@ class GatewayGraph:
         task = state["sanitized"]
         if plan:
             task = f"{task}\n\n(Nota do orquestrador: {plan})"
+        # Semiose — Camada B: injetar contexto KG automaticamente na task.
+        kg_ctx = self._kg_context_block(state)
+        if kg_ctx:
+            task = f"{task}{kg_ctx}"
+            logger.info(
+                json.dumps({"trace_id": state.get("trace_id", ""), "node": "dispatch", "kg_entities": len(kg_ctx.splitlines()) - 2}, ensure_ascii=False)
+            )
         on_agent: AgentCallback | None = getattr(self._local, "on_agent", None)
 
         def run_one(domain: str) -> tuple[str, dict[str, Any]]:

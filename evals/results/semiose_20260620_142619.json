@@ -1,0 +1,460 @@
+{
+  "timestamp": "2026-06-20T14:26:19.929493",
+  "golden": "/home/aejepsen/Documentos/projeto-portifolio/AI-Orchestrator/evals/golden_semiose.jsonl",
+  "modes": {
+    "semantic": false,
+    "neo4j": true,
+    "full": false
+  },
+  "metrics": {
+    "entity_propagation_f1": 1.0,
+    "entity_propagation_precision": 1.0,
+    "entity_propagation_recall": 1.0,
+    "contextual_drift_score": 0.0,
+    "false_enrichment_rate": 0.0,
+    "topic_switch_accuracy": 1.0,
+    "geu": 1.0,
+    "cdrr": 1.0,
+    "relation_precision_at_5": 1.0,
+    "graph_latency_budget": 1.274,
+    "contextual_gain_ratio": 0.0,
+    "boost_precision": 0.0,
+    "f1_micro_routing": 0.0,
+    "f1_micro_routing_no_context": 0.0,
+    "semantic_preservation": 0.0,
+    "total_cases": 30,
+    "cases_enriched": 16,
+    "cases_topic_switch": 12
+  },
+  "gates": {
+    "entity_propagation_f1": {
+      "value": 1.0,
+      "gate": 0.7,
+      "passed": true
+    },
+    "contextual_drift_score": {
+      "value": 0.0,
+      "gate": 0.1,
+      "passed": true
+    },
+    "false_enrichment_rate": {
+      "value": 0.0,
+      "gate": 0.05,
+      "passed": true
+    },
+    "topic_switch_accuracy": {
+      "value": 1.0,
+      "gate": 0.95,
+      "passed": true
+    },
+    "contextual_gain_ratio": {
+      "value": 0.0,
+      "gate": 0.3,
+      "passed": false
+    },
+    "boost_precision": {
+      "value": 0.0,
+      "gate": 0.9,
+      "passed": false
+    },
+    "f1_micro_routing": {
+      "value": 0.0,
+      "gate": 0.9,
+      "passed": false
+    },
+    "geu": {
+      "value": 1.0,
+      "gate": 0.6,
+      "passed": true
+    },
+    "cdrr": {
+      "value": 1.0,
+      "gate": 0.4,
+      "passed": true
+    },
+    "graph_latency_budget": {
+      "value": 1.274,
+      "gate": 1.3,
+      "passed": true
+    },
+    "relation_precision_at_5": {
+      "value": 1.0,
+      "gate": 0.8,
+      "passed": true
+    }
+  },
+  "cases": [
+    {
+      "id": "sem-01",
+      "question": "E o ponto de reposição dele?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0009
+    },
+    {
+      "id": "sem-02",
+      "question": "Quem tem férias pendentes?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0003
+    },
+    {
+      "id": "sem-03",
+      "question": "Qual o estoque do monitor 4K?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-04",
+      "question": "Qual o saldo disponível do CAD-ERG-001?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [
+        "CAD-ERG-001"
+      ],
+      "got_entities": [
+        "CAD-ERG-001"
+      ],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-05",
+      "question": "E as contas a receber?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-06",
+      "question": "Qual o salário dele no RH?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-07",
+      "question": "Confirma o saldo atualizado",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-08",
+      "question": "Quem é o vendedor desse pedido?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-09",
+      "question": "Qual o preço do notebook dev?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-10",
+      "question": "Liste todos os funcionários",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-11",
+      "question": "Qual o status agora?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-12",
+      "question": "Quero criar um pedido com 10 unidades dele para a Startup Maré Alta",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-13",
+      "question": "E da Juliana Castro Neves?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-14",
+      "question": "Liste os produtos da categoria Eletrônicos",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-15",
+      "question": "Qual conta a pagar tem a Vetta como contraparte?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-16",
+      "question": "Qual a fatura pendente deles em finanças?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-17",
+      "question": "Esse SKU está abaixo do ponto de reposição?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-18",
+      "question": "Agora crie uma conta a pagar de R$5000 para a Kalunga",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [
+        "R$5000"
+      ],
+      "got_entities": [
+        "R$5000"
+      ],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-19",
+      "question": "Detalhe as contas que vencem amanhã",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-20",
+      "question": "Existe algum pedido pendente com esses SKUs?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-21",
+      "question": "Quantos dias de saldo ela tem?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-22",
+      "question": "Qual o estoque do SKU MOU-ERG-006?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [
+        "MOU-ERG-006"
+      ],
+      "got_entities": [
+        "MOU-ERG-006"
+      ],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-23",
+      "question": "E o total a pagar?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-24",
+      "question": "Qual a posição dele na empresa?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-25",
+      "question": "Qual o preço unitário desse modelo?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-26",
+      "question": "Liste os pedidos da Cooperativa AgroVale",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    },
+    {
+      "id": "sem-27",
+      "question": "Tem reserva ativa pra ela?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-28",
+      "question": "Qual era o valor?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-29",
+      "question": "Qual o desconto médio aplicado?",
+      "expect_enriched": true,
+      "got_enriched": true,
+      "expect_topic_switch": false,
+      "got_topic_switch": false,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0001
+    },
+    {
+      "id": "sem-30",
+      "question": "E qual produto tem mais estoque?",
+      "expect_enriched": false,
+      "got_enriched": false,
+      "expect_topic_switch": true,
+      "got_topic_switch": true,
+      "expect_entities": [],
+      "got_entities": [],
+      "drift_score": 0.0,
+      "elapsed_s": 0.0
+    }
+  ]
+}

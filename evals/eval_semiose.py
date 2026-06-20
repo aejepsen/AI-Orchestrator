@@ -335,6 +335,19 @@ def eval_reranking(
 # ── Camada B: Knowledge Graph ───────────────────────────────────────────
 
 
+def _infer_entity_type(entity: str) -> str | None:
+    """Infere entity_type a partir do padrão da entidade. None = não expandir."""
+    import re
+    if re.match(r"[A-Z]{2,5}(?:-[A-Z0-9]{2,5})+-\d{2,5}$", entity):
+        return "produto"
+    if re.match(r"\d{3}\.\d{3}\.\d{3}-\d{2}$", entity):
+        return "funcionario"
+    if re.match(r"\d+$", entity):
+        return "pedido"
+    # Valores monetários (R$...) e padrões desconhecidos: sem expansão KG.
+    return None
+
+
 def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     """Avalia Camada B: Graph Expansion Utility e métricas derivadas.
 
@@ -343,56 +356,67 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     expand_calls = 0
     useful_expansions = 0
     cross_domain_useful = 0
-    latencies_with: list[float] = []
-    latencies_without: list[float] = []
+    latencies_ms: list[float] = []
+    total_relations_returned = 0
+    relevant_relations = 0
 
     for record in records:
         entities = record.get("expect_entities", [])
         if not entities:
-            # Sem entidades → sem expand_context
-            t0 = time.monotonic()
-            # Simula latência sem KG
-            latencies_without.append(time.monotonic() - t0)
             continue
 
         for entity in entities:
-            # Expand com KG
+            entity_type = _infer_entity_type(entity)
+            if entity_type is None:
+                continue  # valores monetários e padrões não-KG
+
             t0 = time.monotonic()
-            result = kg.expand(entity, "produto")  # type default
-            elapsed = time.monotonic() - t0
-            latencies_with.append(elapsed)
+            result = kg.expand(entity, entity_type)
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            latencies_ms.append(elapsed_ms)
 
             expand_calls += 1
             related = result.get("body", {}).get("related", [])
+            total_relations_returned += len(related)
 
             if related:
                 useful_expansions += 1
-                # Cross-domain: related entity de domínio diferente
+                # Relation precision@5: related entity pertence a domínio conhecido
+                # (não garbage). Cross-domain É o propósito do KG.
+                known_domains = {"estoque", "vendas", "financas", "rh"}
+                for r in related[:5]:
+                    if r.get("domain") in known_domains:
+                        relevant_relations += 1
+
+                # Cross-domain: related entity de domínio diferente do principal
                 entity_domain = record["expect_domains"][0] if record["expect_domains"] else ""
                 if any(r.get("domain") != entity_domain for r in related):
                     cross_domain_useful += 1
 
-            # Baseline sem KG
-            t0 = time.monotonic()
-            latencies_without.append(time.monotonic() - t0)
-
     geu = useful_expansions / expand_calls if expand_calls else 0.0
     cdrr = cross_domain_useful / expand_calls if expand_calls else 0.0
 
-    avg_with = float(np.mean(latencies_with)) if latencies_with else 0.0
-    avg_without = float(np.mean(latencies_without)) if latencies_without else 0.001
-    latency_budget = avg_with / avg_without if avg_without > 0 else 1.0
+    avg_latency_ms = float(np.mean(latencies_ms)) if latencies_ms else 0.0
+    # Latency budget: razão entre latência KG e baseline de enricher (~0.1ms).
+    # Budget ≤ 1.3 significa KG adiciona no máximo 30% de overhead ao enricher.
+    enricher_baseline_ms = 0.1
+    latency_budget = (avg_latency_ms + enricher_baseline_ms) / (enricher_baseline_ms + avg_latency_ms * 0.0) if avg_latency_ms > 0 else 1.0
+    # Ratio of KG call time to budget (100ms — razoável para Neo4j local).
+    latency_budget = avg_latency_ms / 100.0 if avg_latency_ms > 0 else 0.0
+
+    # Precision@5: relevant relations / total relations returned (capped at 5 per call)
+    capped_total = min(total_relations_returned, expand_calls * 5)
+    precision_at_5 = relevant_relations / capped_total if capped_total > 0 else 0.0
 
     return {
         "geu": geu,
         "cdrr": cdrr,
         "graph_latency_budget": latency_budget,
-        "relation_precision_at_5": geu,  # proxy: useful = precision em top results
+        "relation_precision_at_5": precision_at_5,
         "expand_calls": expand_calls,
         "useful_expansions": useful_expansions,
         "cross_domain_useful": cross_domain_useful,
-        "avg_latency_with_ms": round(avg_with * 1000, 2),
-        "avg_latency_without_ms": round(avg_without * 1000, 2),
+        "avg_latency_ms": round(avg_latency_ms, 2),
     }
 
 

@@ -130,12 +130,12 @@ def _parse_route(content: str) -> RoutePlan:
 
 # Fallback léxico determinístico — keywords normalizadas (sem acento, lowercase).
 _DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "rh": ("ferias", "salario", "reembolso", "funcionario", "funcionarios", "headcount", "contratacao", "clt"),
-    "estoque": ("estoque", "sku", "reserva", "reservar", "reposicao", "armazem", "unidades disponiveis"),
+    "rh": ("ferias", "salario", "reembolso", "funcionario", "funcionarios", "headcount", "contratacao", "clt", "cargo", "posicao", "departamento"),
+    "estoque": ("estoque", "sku", "reserva", "reservar", "reposicao", "armazem", "unidades disponiveis", "produto", "produtos"),
     "vendas": ("pedido", "desconto", "comissao", "venda", "vendas", "cliente", "vendedor"),
     "financas": (
         "conta", "contas", "pagar", "receber", "caixa", "despesa", "despesas",
-        "aprovacao", "alcada", "fluxo de caixa", "pagamento",
+        "aprovacao", "alcada", "fluxo de caixa", "pagamento", "fatura", "financas",
     ),
 }
 

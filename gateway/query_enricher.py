@@ -26,7 +26,7 @@ from gateway.router import _DOMAIN_KEYWORDS, _normalize
 # Regex de entidades estruturadas (patterns conhecidos dos 4 domínios)
 # ---------------------------------------------------------------------------
 
-_SKU_RE = re.compile(r"\b[A-Z]{2,5}-\d{2,5}\b")
+_SKU_RE = re.compile(r"\b[A-Z]{2,5}(?:-[A-Z0-9]{2,5})+-\d{2,5}\b")
 _CPF_RE = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b")
 _CNPJ_RE = re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b")
 _MONEY_RE = re.compile(r"R\$\s*[\d.,]+")
@@ -94,18 +94,53 @@ def _regex_extract(text: str) -> list[str]:
     return entities
 
 
+# Entidades estruturadas que implicam domínio (complementa _DOMAIN_KEYWORDS).
+_ENTITY_DOMAIN_MAP: dict[str, str] = {
+    "sku": "estoque",
+    "pedido": "vendas",
+    "cpf": "rh",
+}
+
+# Vocabulário cross-domain: keywords que aparecem naturalmente em domínios
+# adjacentes e NÃO indicam troca de tópico. Ex: "SKU" em vendas é detalhe
+# de pedido (order_items), não intenção de ir para estoque.
+_CROSS_DOMAIN_VOCAB: dict[str, frozenset[str]] = {
+    "vendas": frozenset({"sku", "aprovacao"}),      # order_items referenciam SKUs; desconto tem aprovação
+    "estoque": frozenset({"cliente"}),                # reservas podem mencionar clientes
+    "rh": frozenset({"vendas", "venda", "financeiro", "engenharia", "operacoes", "rh"}),  # nomes de departamento
+    "financas": frozenset(),
+}
+
+
 def _has_strong_conflict(question: str, last_domain: str) -> bool:
     """Se a query tem keywords fortes de OUTRO domínio, há troca de tópico.
 
-    Importa _DOMAIN_KEYWORDS do router (source of truth único) — compartilha
-    dados, não pipeline. Zero duplicação.
+    Duas fontes de conflito:
+    1. Keywords textuais (_DOMAIN_KEYWORDS do router — source of truth único).
+       Exceção: keywords que pertencem ao vocabulário cross-domain do domínio
+       atual (_CROSS_DOMAIN_VOCAB) — aparecem naturalmente sem indicar troca.
+    2. Entidades estruturadas (SKU → estoque, pedido → vendas, CPF → RH).
     """
     normalized = _normalize(question)
+    cross_vocab = _CROSS_DOMAIN_VOCAB.get(last_domain, frozenset())
+
+    # 1. Keywords textuais (excluindo vocabulário cross-domain do domínio atual)
     for domain, keywords in _DOMAIN_KEYWORDS.items():
         if domain == last_domain:
             continue
-        if any(re.search(rf"(?<![a-z]){re.escape(kw)}", normalized) for kw in keywords):
-            return True
+        for kw in keywords:
+            if kw in cross_vocab:
+                continue
+            if re.search(rf"(?<![a-z]){re.escape(kw)}", normalized):
+                return True
+
+    # 2. Entidades estruturadas → domínio implícito
+    for label, pattern in _ENTITY_PATTERNS:
+        if pattern.search(question) and label in _ENTITY_DOMAIN_MAP:
+            implied_domain = _ENTITY_DOMAIN_MAP[label]
+            if implied_domain != last_domain:
+                return True
+
     return False
 
 

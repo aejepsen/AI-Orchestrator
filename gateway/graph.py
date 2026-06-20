@@ -267,10 +267,13 @@ class GatewayGraph:
         started = time.monotonic()
         trace: TraceHandle | None = getattr(self._local, "trace", None)
         span = trace.span(name="classify") if trace else None
-        # Semiose — Camada C: propagar context_domain para re-ranking no SemanticRouter.
-        context_domain = (state.get("_context_signals") or {}).get("last_domain")
+        # Semiose — Camada C: propagar context_domain e enriched para classify_intent.
+        ctx_signals = state.get("_context_signals") or {}
+        context_domain = ctx_signals.get("last_domain")
+        was_enriched = ctx_signals.get("enriched", False)
         route = classify_intent(
-            state["sanitized"], self._llm, semantic=self._semantic, context_domain=context_domain,
+            state["sanitized"], self._llm, semantic=self._semantic,
+            context_domain=context_domain, enriched=was_enriched,
         )
         update: GraphState = {"route": route.model_dump()}
         _log_node({**state, **update}, "classify", started)
@@ -449,6 +452,7 @@ class GatewayGraph:
         self,
         question: str,
         *,
+        history: list[dict[str, str]] | None = None,
         on_agent: AgentCallback | None = None,
         trace_id: str | None = None,
         thread_id: str | None = None,
@@ -457,6 +461,8 @@ class GatewayGraph:
         """Executa o grafo para uma pergunta; retorna o estado final."""
         tid = trace_id or str(uuid.uuid4())
         state: dict[str, Any] = {"question": question, "trace_id": tid}
+        if history:
+            state["history"] = history
 
         # Callbacks e trace em thread-local (não serializáveis pelo checkpointer).
         self._local.on_agent = on_agent
@@ -478,6 +484,7 @@ class GatewayGraph:
         self,
         question: str,
         *,
+        history: list[dict[str, str]] | None = None,
         on_agent: AgentCallback | None = None,
         trace_id: str | None = None,
         thread_id: str | None = None,
@@ -486,6 +493,8 @@ class GatewayGraph:
         """Itera updates por nó (stream_mode='updates') — base do SSE."""
         tid = trace_id or str(uuid.uuid4())
         state: dict[str, Any] = {"question": question, "trace_id": tid}
+        if history:
+            state["history"] = history
 
         self._local.on_agent = on_agent
         self._local.on_confirm = on_confirm

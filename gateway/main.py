@@ -48,6 +48,7 @@ _SENTINEL = ("__done__", None)
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     thread_id: str | None = Field(default=None, max_length=64)
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
 
 
 class ResumeRequest(BaseModel):
@@ -141,6 +142,7 @@ def create_app(
                 graph = get_graph()
                 stream = graph.stream(
                     body.question,
+                    history=body.history,
                     trace_id=trace_id,
                     thread_id=tid,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),

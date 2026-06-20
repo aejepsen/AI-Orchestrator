@@ -164,10 +164,17 @@ def gather_signals(state: dict[str, Any], *, spacy_enabled: bool = True) -> Cont
         if user_msgs:
             last_user = user_msgs[-1].get("content", "")
             normalized = _normalize(last_user)
+            # 1. Keywords textuais
             for domain, keywords in _DOMAIN_KEYWORDS.items():
                 if any(re.search(rf"(?<![a-z]){re.escape(kw)}", normalized) for kw in keywords):
                     signals.last_domain = domain
                     break
+            # 2. Entidades estruturadas no history → domínio implícito
+            if not signals.last_domain:
+                for label, pattern in _ENTITY_PATTERNS:
+                    if pattern.search(last_user) and label in _ENTITY_DOMAIN_MAP:
+                        signals.last_domain = _ENTITY_DOMAIN_MAP[label]
+                        break
 
     # Entidades: extrair da query sanitizada (já no state), não do history.
     sanitized = state.get("sanitized", "")

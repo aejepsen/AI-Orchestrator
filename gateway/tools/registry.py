@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -144,8 +144,21 @@ def parse_openapi(spec: dict[str, Any]) -> dict[str, ToolSpec]:
     return tools
 
 
+class VirtualTool:
+    """Tool não-HTTP com executor custom (ex.: Neo4j expand_context)."""
+
+    def __init__(self, spec: ToolSpec, executor: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+        self.spec = spec
+        self.executor = executor
+
+
 class ToolRegistry:
-    """Cache em memória das tools por domínio + executor HTTP real."""
+    """Cache em memória das tools por domínio + executor HTTP real.
+
+    Suporta virtual tools: tools com executor custom (não-HTTP) registradas
+    via register_virtual_tool(). Usam o mesmo pipeline de tool trace e
+    retry do agente, mas executam lógica local em vez de HTTP.
+    """
 
     def __init__(
         self,
@@ -163,6 +176,8 @@ class ToolRegistry:
         self._breaker = breaker or CircuitBreaker()
         self._cache: dict[str, dict[str, ToolSpec]] = {}
         self._lock = threading.Lock()
+        # Virtual tools: executor custom por (domain, tool_name).
+        self._virtual: dict[tuple[str, str], VirtualTool] = {}
 
     def _specs(self, domain: str) -> dict[str, ToolSpec]:
         with self._lock:
@@ -181,9 +196,27 @@ class ToolRegistry:
         with self._lock:
             self._cache[domain] = specs
 
+    def register_virtual_tool(
+        self,
+        domains: tuple[str, ...] | list[str],
+        spec: ToolSpec,
+        executor: "Callable[[dict[str, Any]], dict[str, Any]]",
+    ) -> None:
+        """Registra tool não-HTTP com executor custom para os domínios indicados."""
+        vt = VirtualTool(spec, executor)
+        for domain in domains:
+            self._virtual[(domain, spec.name)] = vt
+
     def tools_for(self, domain: str) -> list[dict[str, Any]]:
-        """Tools no formato Ollama, escopadas ao serviço do domínio."""
-        return [spec.as_ollama_tool() for spec in self._specs(domain).values()]
+        """Tools no formato Ollama, escopadas ao serviço do domínio.
+
+        Inclui virtual tools registradas para este domínio.
+        """
+        tools = [spec.as_ollama_tool() for spec in self._specs(domain).values()]
+        for (d, _name), vt in self._virtual.items():
+            if d == domain:
+                tools.append(vt.spec.as_ollama_tool())
+        return tools
 
     def execute(self, domain: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Executa a chamada HTTP real da tool e devolve {"status", "body"}.
@@ -195,6 +228,14 @@ class ToolRegistry:
         circuit breaker do domínio; circuito aberto → resposta degradada
         imediata sem chamada HTTP. 4xx é erro de negócio e não conta.
         """
+        # Virtual tools: dispatch direto ao executor custom, sem HTTP.
+        vt = self._virtual.get((domain, name))
+        if vt is not None:
+            try:
+                return vt.executor(dict(args or {}))
+            except Exception:  # noqa: BLE001
+                return transport_error_response(domain)
+
         if not self._breaker.allow(domain):
             return open_response(domain)
         try:

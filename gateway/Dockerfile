@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir \
 # Pre-download SBERT model (cached no image, evita download no primeiro request)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', cache_folder='/app/models')"
 
+# Pre-download spaCy pt_core_news_sm (Semiose Camada A — NER)
+RUN python -m spacy download pt_core_news_sm
+
 COPY gateway/ /app/gateway/
 # Golden de roteamento: fonte do índice do semantic router (Qdrant).
 COPY evals/golden_routing.jsonl /app/evals/golden_routing.jsonl

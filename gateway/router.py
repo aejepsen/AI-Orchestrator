@@ -227,16 +227,25 @@ def strip_injection(question: str) -> str:
     return prefix if prefix.strip() else question
 
 
-def classify_intent(question: str, llm: OllamaClient, semantic=None) -> RoutePlan:
+def classify_intent(
+    question: str,
+    llm: OllamaClient,
+    semantic=None,
+    *,
+    context_domain: str | None = None,
+) -> RoutePlan:
     """Classifica a pergunta em domínios.
 
     Pipeline: strip de injection determinístico → semantic router (kNN no
     Qdrant, se fornecido e confiante) → LLM → retry com erro → fallback
     léxico. Guards determinísticos em todas as saídas.
+
+    `context_domain` (Semiose — Camada C): domínio do turno anterior,
+    propagado para o SemanticRouter para re-ranking contextual.
     """
     question = strip_injection(question)
     if semantic is not None:
-        plan = semantic.route(question)
+        plan = semantic.route(question, context_domain=context_domain)
         if plan is not None:
             return _apply_routing_guards(question, plan)
     messages = [

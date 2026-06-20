@@ -7,3 +7,7 @@ langfuse==2.56.1
 sentence-transformers==3.4.1
 transformers==4.48.0
 torch==2.5.1+cpu
+# Semiose — Camada A (NER opcional; fallback: regex)
+spacy==3.8.4
+# Semiose — Camada B (Knowledge Graph; lazy import, degrada sem Neo4j)
+neo4j==5.28.1

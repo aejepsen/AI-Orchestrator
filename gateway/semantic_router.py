@@ -6,6 +6,11 @@ exemplos rotulados do golden de roteamento. Aceite exige consenso: top-1 acima
 do threshold E unanimidade dos vizinhos confiantes no conjunto
 de domínios. Qualquer dúvida → None → o LLM classifier decide.
 
+Semiose — Camada C (re-ranking contextual):
+  Nível 1 (Harness): boost aditivo determinístico para hits cujo domínio
+  coincide com o context_domain do turno anterior. Preserva _raw_score
+  para tracing. Sem LLM, zero latência extra.
+
 Falha de infraestrutura (Qdrant fora, embedding indisponível) nunca derruba a
 request: loga warning e devolve None (degradação graceful para o LLM).
 """
@@ -26,6 +31,11 @@ from gateway.router import RoutePlan
 logger = logging.getLogger(__name__)
 
 COLLECTION = "routing_examples"
+
+# Semiose — Camada C: boost aditivo para re-ranking contextual.
+# Valor calibrado para threshold 0.80-0.92: desempata matches bons,
+# não resgata matches ruins. Cap em 1.0 preserva semântica de cosseno.
+CONTEXT_BOOST = 0.05
 
 
 def _point_id(question: str) -> str:
@@ -129,11 +139,21 @@ class SemanticRouter:
 
     # -- roteamento ------------------------------------------------------------
 
-    def route(self, question: str, *, exclude_question: str | None = None) -> RoutePlan | None:
+    def route(
+        self,
+        question: str,
+        *,
+        exclude_question: str | None = None,
+        context_domain: str | None = None,
+    ) -> RoutePlan | None:
         """Rota por similaridade ou None (sem consenso/infra fora → LLM decide).
 
         `exclude_question` remove um exemplo do resultado — usado pelo eval
         em leave-one-out para não casar consigo mesmo.
+
+        `context_domain` (Semiose — Camada C): domínio do turno anterior.
+        Aplica boost aditivo determinístico nos hits cujo domínio coincide,
+        desempatando matches bons sem resgatar matches ruins.
         """
         try:
             self.ensure_ready()
@@ -152,6 +172,20 @@ class SemanticRouter:
             excluded = _point_id(exclude_question)
             hits = [h for h in hits if h.get("id") != excluded]
         hits = hits[: self._top_k]
+
+        # Semiose — Camada C: re-ranking contextual (Nível 1 — Harness).
+        # Preserva _raw_score para tracing; boost aditivo com cap em 1.0.
+        if context_domain:
+            for h in hits:
+                h["_raw_score"] = h.get("score", 0.0)
+                if context_domain in h.get("payload", {}).get("domains", []):
+                    h["score"] = min(h["_raw_score"] + CONTEXT_BOOST, 1.0)
+            hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
+            if any(h.get("_raw_score") != h.get("score") for h in hits):
+                logger.debug(
+                    "semantic_router: context rerank applied (context_domain=%s)",
+                    context_domain,
+                )
 
         confident = [h for h in hits if h.get("score", 0.0) >= self._threshold]
         if not confident or confident[0] is not hits[0]:
@@ -177,10 +211,14 @@ class SemanticRouter:
         if any(set(h["payload"]["domains"]) != top_domains for h in confident):
             return None
 
-        score = hits[0]["score"]
+        raw_score = hits[0].get("_raw_score", top_score)
         nearest = hits[0]["payload"]["question"]
+        plan_detail = f'Roteado por similaridade semântica (score {raw_score:.2f}'
+        if context_domain and raw_score != top_score:
+            plan_detail += f", boosted {top_score:.2f} via contexto {context_domain}"
+        plan_detail += f') com "{nearest}".'
         return RoutePlan(
             domains=sorted(top_domains),  # type: ignore[arg-type]
-            plan=f'Roteado por similaridade semântica (score {score:.2f}) com "{nearest}".',
+            plan=plan_detail,
             clarification=None,
         )

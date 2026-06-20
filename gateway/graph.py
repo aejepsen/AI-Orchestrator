@@ -1,7 +1,7 @@
 """Grafo do orquestrador (LangGraph StateGraph).
 
-Topologia: sanitize → classify → (clarification? → respond_clarification)
-                                  senão → confirm_dispatch → dispatch → synthesize.
+Topologia: sanitize → enrich → classify → (clarification? → respond_clarification)
+                                          senão → confirm_dispatch → dispatch → synthesize.
 
 Decisões:
 - MemorySaver como checkpointer in-memory (produção: SqliteSaver ou PostgresSaver).
@@ -30,6 +30,8 @@ from langgraph.graph import END, StateGraph
 from gateway.agents import DomainAgentRunner
 from gateway.config import Settings
 from gateway.llm import OllamaClient
+from gateway.knowledge_graph import KnowledgeGraph, get_expand_tool_spec, graph_enabled_domains
+from gateway.query_enricher import ContextSignal, enrich_query, gather_signals
 from gateway.router import classify_intent
 from gateway.sanitize import flag_injection, sanitize_question
 from gateway.tracing import TraceHandle, Tracer
@@ -56,6 +58,10 @@ class GraphState(TypedDict, total=False):
     pending_confirmation: dict[str, Any] | None
     # Segurança: flag de injection semântica detectada.
     _injection_suspect: bool
+    # Semiose: route do turno anterior (persistido pelo checkpointer).
+    _last_route: dict[str, Any]
+    # Semiose: sinais de contexto extraídos pelo enricher.
+    _context_signals: dict[str, Any]
 
 
 _SYNTH_SYSTEM = """Você é o orquestrador de um sistema corporativo multi-agente.
@@ -128,6 +134,26 @@ class GatewayGraph:
         self._semantic = semantic
         self._tracer = tracer
 
+        # Semiose — Camada B: Knowledge Graph (Neo4j → expand_context tool).
+        self._knowledge_graph = None
+        if self._settings and self._settings.neo4j_enabled:
+            kg = KnowledgeGraph(
+                self._settings.neo4j_uri,
+                auth=(self._settings.neo4j_user, self._settings.neo4j_password),
+            )
+            if kg.available:
+                self._knowledge_graph = kg
+                runner.registry.register_virtual_tool(
+                    graph_enabled_domains(),
+                    get_expand_tool_spec(),
+                    lambda args: kg.expand(
+                        entity_name=args.get("entity_name", ""),
+                        entity_type=args.get("entity_type", ""),
+                        target_domain=args.get("target_domain", ""),
+                    ),
+                )
+                logger.info("KnowledgeGraph: expand_context registrada para %s", graph_enabled_domains())
+
         # Injection Detector (BERTimbau). Fallback regex se indisponível.
         self._injection_detector = None
         if self._settings and self._settings.injection_detector_enabled:
@@ -188,11 +214,64 @@ class GatewayGraph:
             span.end()
         return update
 
+    def _enrich(self, state: GraphState) -> GraphState:
+        """Enriquecimento contextual da query (Semiose — Camada A).
+
+        Extrai sinais de contexto do state (last_route, entidades por regex/spaCy)
+        e reconstrói a query sanitizada com metadata estruturada. Nunca usa texto
+        cru do history — só campos validados. Sem LLM, determinístico.
+        """
+        started = time.monotonic()
+        trace: TraceHandle | None = getattr(self._local, "trace", None)
+        span = trace.span(name="enrich") if trace else None
+
+        # Opt-out: se enricher desabilitado, passa query direto.
+        if self._settings and not self._settings.enricher_enabled:
+            _log_node(state, "enrich", started, domains=[])
+            if span:
+                span.end()
+            return {}
+
+        signals = gather_signals(state, spacy_enabled=self._settings.spacy_enabled if self._settings else True)
+        enriched_query, was_enriched = enrich_query(state["sanitized"], signals)
+
+        update: GraphState = {
+            "sanitized": enriched_query,
+            "_context_signals": {
+                "last_domain": signals.last_domain,
+                "recent_entities": signals.recent_entities,
+                "enriched": was_enriched,
+            },
+        }
+
+        if was_enriched:
+            logger.info(
+                json.dumps(
+                    {
+                        "trace_id": state.get("trace_id", ""),
+                        "node": "enrich",
+                        "last_domain": signals.last_domain,
+                        "entities": signals.recent_entities[:5],
+                        "enriched_query": enriched_query[:200],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+        _log_node({**state, **update}, "enrich", started, domains=[])
+        if span:
+            span.end()
+        return update
+
     def _classify(self, state: GraphState) -> GraphState:
         started = time.monotonic()
         trace: TraceHandle | None = getattr(self._local, "trace", None)
         span = trace.span(name="classify") if trace else None
-        route = classify_intent(state["sanitized"], self._llm, semantic=self._semantic)
+        # Semiose — Camada C: propagar context_domain para re-ranking no SemanticRouter.
+        context_domain = (state.get("_context_signals") or {}).get("last_domain")
+        route = classify_intent(
+            state["sanitized"], self._llm, semantic=self._semantic, context_domain=context_domain,
+        )
         update: GraphState = {"route": route.model_dump()}
         _log_node({**state, **update}, "classify", started)
         if span:
@@ -319,7 +398,12 @@ class GatewayGraph:
         _log_node(state, "synthesize", started, domains=domains)
         if span:
             span.end()
-        return {"final_answer": answer, "history": history}
+        return {
+            "final_answer": answer,
+            "history": history,
+            # Semiose: persistir route atual para enriquecimento do próximo turno.
+            "_last_route": state.get("route", {}),
+        }
 
     # -- montagem ------------------------------------------------------------
 
@@ -333,6 +417,7 @@ class GatewayGraph:
     def _build(self):
         graph = StateGraph(GraphState)
         graph.add_node("sanitize", self._sanitize)
+        graph.add_node("enrich", self._enrich)
         graph.add_node("classify", self._classify)
         graph.add_node("respond_clarification", self._respond_clarification)
         graph.add_node("confirm_dispatch", self._confirm_dispatch)
@@ -340,7 +425,8 @@ class GatewayGraph:
         graph.add_node("synthesize", self._synthesize)
 
         graph.set_entry_point("sanitize")
-        graph.add_edge("sanitize", "classify")
+        graph.add_edge("sanitize", "enrich")
+        graph.add_edge("enrich", "classify")
         graph.add_conditional_edges(
             "classify",
             lambda state: "respond_clarification" if state["route"].get("clarification") else "confirm_dispatch",

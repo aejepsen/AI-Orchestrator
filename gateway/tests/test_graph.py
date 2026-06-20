@@ -148,4 +148,4 @@ def test_stream_emite_updates_por_no():
 
     nodes = [node for update in graph.stream("crie o pedido") for node in update]
 
-    assert nodes == ["sanitize", "classify", "confirm_dispatch", "dispatch", "synthesize"]
+    assert nodes == ["sanitize", "enrich", "classify", "confirm_dispatch", "dispatch", "synthesize"]

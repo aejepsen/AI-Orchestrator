@@ -76,6 +76,21 @@ class Settings:
     injection_detector_enabled: bool = field(
         default_factory=lambda: os.environ.get("INJECTION_DETECTOR_ENABLED", "1") not in ("0", "false", "False")
     )
+    # Semiose — Camada A: enriquecimento contextual da query. Desabilita com ENRICHER_ENABLED=0.
+    enricher_enabled: bool = field(
+        default_factory=lambda: os.environ.get("ENRICHER_ENABLED", "1") not in ("0", "false", "False")
+    )
+    # spaCy NER fallback (lazy-load pt_core_news_sm). Desabilita com SPACY_ENABLED=0.
+    spacy_enabled: bool = field(
+        default_factory=lambda: os.environ.get("SPACY_ENABLED", "1") not in ("0", "false", "False")
+    )
+    # Semiose — Camada B: Knowledge Graph (Neo4j). Desabilita com NEO4J_ENABLED=0.
+    neo4j_enabled: bool = field(
+        default_factory=lambda: os.environ.get("NEO4J_ENABLED", "0") not in ("0", "false", "False")
+    )
+    neo4j_uri: str = field(default_factory=lambda: os.environ.get("NEO4J_URI", "bolt://localhost:7687"))
+    neo4j_user: str = field(default_factory=lambda: os.environ.get("NEO4J_USER", "neo4j"))
+    neo4j_password: str = field(default_factory=lambda: os.environ.get("NEO4J_PASSWORD", "changeme"))
     # Pool dedicado para execução do grafo (evita competir com asyncio default pool).
     max_graph_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_GRAPH_WORKERS", "4")))
     # Timeout global de request SSE (segundos). Independente do LLM_TIMEOUT_S.

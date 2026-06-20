@@ -178,6 +178,11 @@ class DomainAgentRunner:
         )
         self._llm = OllamaClient(self.settings.ollama_url, self.settings.model, timeout_s=self.settings.llm_timeout_s, keep_alive=self.settings.keep_alive)
 
+    @property
+    def registry(self) -> ToolRegistry:
+        """Acesso ao registry para registro de virtual tools (ex.: expand_context)."""
+        return self._registry
+
     def run(self, domain: str, task: str, *, max_iters: int | None = None) -> AgentResult:
         return run_domain_agent(
             domain,

@@ -98,3 +98,69 @@ def test_conflict_vocab_cross_domain_nao_dispara():
 def test_conflict_entidade_estruturada_implica_dominio():
     # CPF implica RH; com contexto vendas → conflito (troca de tópico).
     assert _has_strong_conflict("qual o cargo do 123.456.789-00?", "vendas") is True
+
+
+# ── KG feedback (Camada A+B): kg_neighbors + enrich_query(kg=...) ─────────
+
+
+class _FakeKG:
+    """KG mock: retorna vizinhos fixos (ou levanta) para testar o enricher."""
+
+    def __init__(self, related=None, raise_on=False):
+        self._related = related or []
+        self._raise = raise_on
+
+    def expand(self, entity_name, entity_type, target_domain=""):
+        if self._raise:
+            raise RuntimeError("kg down")
+        return {"status": 200, "body": {"related": self._related}}
+
+
+def test_kg_neighbors_resolve_sku():
+    from gateway.query_enricher import kg_neighbors
+
+    kg = _FakeKG(related=[
+        {"name": "Mobiliário", "type": "categoria", "domain": "estoque"},
+        {"name": "Lojas Andrade S.A.", "type": "cliente", "domain": "vendas"},
+    ])
+    out = kg_neighbors(["CAD-ERG-001"], kg)
+    assert "Mobiliário (categoria/estoque)" in out
+    assert "Lojas Andrade S.A. (cliente/vendas)" in out
+
+
+def test_kg_neighbors_sem_kg_ou_sem_entidade():
+    from gateway.query_enricher import kg_neighbors
+
+    rel = [{"name": "x", "type": "t", "domain": "estoque"}]
+    assert kg_neighbors(["CAD-ERG-001"], None) == []
+    assert kg_neighbors([], _FakeKG(related=rel)) == []
+
+
+def test_kg_neighbors_graceful_em_excecao():
+    from gateway.query_enricher import kg_neighbors
+
+    assert kg_neighbors(["CAD-ERG-001"], _FakeKG(raise_on=True)) == []
+
+
+def test_kg_neighbors_dedup_e_limite():
+    from gateway.query_enricher import kg_neighbors
+
+    rel = [{"name": f"n{i}", "type": "t", "domain": "estoque"} for i in range(10)]
+    rel.append({"name": "n0", "type": "t", "domain": "estoque"})  # duplicata
+    out = kg_neighbors(["CAD-ERG-001"], _FakeKG(related=rel), limit=6)
+    assert len(out) == 6
+    assert len(set(out)) == 6
+
+
+def test_enrich_query_com_kg_injeta_relacionado():
+    kg = _FakeKG(related=[{"name": "Mobiliário", "type": "categoria", "domain": "estoque"}])
+    sig = ContextSignal(last_domain="estoque", recent_entities=["CAD-ERG-001"])
+    q, enriched = enrich_query("e o ponto de reposição?", sig, kg=kg)
+    assert enriched is True
+    assert "relacionado: Mobiliário (categoria/estoque)" in q
+
+
+def test_enrich_query_kg_none_mantem_comportamento():
+    sig = ContextSignal(last_domain="estoque", recent_entities=["CAD-ERG-001"])
+    q, enriched = enrich_query("e o ponto?", sig, kg=None)
+    assert "relacionado:" not in q

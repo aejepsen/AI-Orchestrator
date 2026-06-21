@@ -646,6 +646,11 @@ def main() -> int:
             examples_path=str(GOLDEN_ROUTING),
             threshold=settings.semantic_threshold,
             top_k=settings.semantic_top_k,
+            context_boost=settings.context_boost,
+            contextual_embeddings=settings.contextual_embeddings_enabled,
+            rerank_cross_encoder=settings.rerank_cross_encoder_enabled,
+            cross_encoder_model=settings.cross_encoder_model,
+            api_key=settings.qdrant_api_key,
         )
         semantic.ensure_ready()
 

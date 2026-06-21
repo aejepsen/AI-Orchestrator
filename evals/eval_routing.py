@@ -24,7 +24,9 @@ sys.path.insert(0, str(ROOT))
 
 from gateway.config import load_settings  # noqa: E402
 from gateway.embedder import SBERTEmbedder  # noqa: E402
+from gateway.knowledge_graph import KnowledgeGraph  # noqa: E402
 from gateway.llm import OllamaClient  # noqa: E402
+from gateway.query_enricher import ContextSignal, _regex_extract, enrich_query  # noqa: E402
 from gateway.router import RoutePlan, classify_intent  # noqa: E402
 from gateway.semantic_router import SemanticRouter  # noqa: E402
 
@@ -54,6 +56,11 @@ def main() -> int:
         action="store_true",
         help="ativa a camada semântica (Qdrant) em leave-one-out: a própria pergunta é excluída do índice",
     )
+    parser.add_argument(
+        "--kg-enrich",
+        action="store_true",
+        help="Camada A+B: enriquece a query com vizinhos 1-hop do KG (Neo4j) antes de classificar",
+    )
     args = parser.parse_args()
 
     records = load_golden()
@@ -80,6 +87,11 @@ def main() -> int:
             examples_path=str(GOLDEN),
             threshold=settings.semantic_threshold,
             top_k=settings.semantic_top_k,
+            context_boost=settings.context_boost,
+            contextual_embeddings=settings.contextual_embeddings_enabled,
+            rerank_cross_encoder=settings.rerank_cross_encoder_enabled,
+            cross_encoder_model=settings.cross_encoder_model,
+            api_key=settings.qdrant_api_key,
         )
         semantic.ensure_ready()
 
@@ -94,13 +106,22 @@ def main() -> int:
 
         semantic = _LeaveOneOut(semantic)
 
+    kg = None
+    if args.kg_enrich:
+        kg = KnowledgeGraph(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password))
+
     items: list[dict] = []
     hits = 0
     layer_counts: dict[str, int] = {"semantic": 0, "llm": 0, "lexical": 0}
     for i, record in enumerate(records, 1):
         started = time.monotonic()
+        question = record["question"]
+        if kg is not None:
+            ents = _regex_extract(question)
+            if ents:
+                question, _ = enrich_query(question, ContextSignal(recent_entities=ents), kg=kg)
         try:
-            route = with_deadline(classify_intent, record["question"], llm, semantic=semantic)
+            route = with_deadline(classify_intent, question, llm, semantic=semantic)
         except CaseTimeout as exc:
             route = RoutePlan(domains=[], plan="", clarification=f"watchdog: {exc}")
         if route.plan.startswith("Roteado por similaridade"):

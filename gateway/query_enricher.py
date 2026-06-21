@@ -98,6 +98,45 @@ def _regex_extract(text: str) -> list[str]:
     return entities
 
 
+def _kg_entity_type(entity: str) -> str | None:
+    """Infere o tipo de nó do KG a partir do padrão da entidade extraída."""
+    if _SKU_RE.match(entity):
+        return "produto"
+    if _CPF_RE.match(entity):
+        return "funcionario"
+    if _ORDER_ID_RE.match(entity):
+        return "pedido"
+    return None
+
+
+def kg_neighbors(entities: list[str], kg: Any, *, limit: int = 6) -> list[str]:
+    """Vizinhos 1-hop das entidades resolvidas no KG (Semiose — Camada A+B).
+
+    Determinístico e graceful: KG fora/entidade não resolvida → lista vazia.
+    Retorna strings compactas "nome (tipo/domínio)" sem duplicatas, ordem estável.
+    """
+    if not kg or not entities:
+        return []
+    facts: list[str] = []
+    for ent in entities[:3]:
+        etype = _kg_entity_type(ent)
+        if etype is None:
+            continue
+        try:
+            result = kg.expand(ent, etype)
+        except Exception:  # noqa: BLE001 — KG nunca quebra o pipeline
+            continue
+        for rel in result.get("body", {}).get("related", []):
+            facts.append(f"{rel['name']} ({rel['type']}/{rel['domain']})")
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for fact in facts:
+        if fact not in seen:
+            seen.add(fact)
+            deduped.append(fact)
+    return deduped[:limit]
+
+
 # Entidades estruturadas que implicam domínio (complementa _DOMAIN_KEYWORDS).
 _ENTITY_DOMAIN_MAP: dict[str, str] = {
     "sku": "estoque",
@@ -193,13 +232,17 @@ def gather_signals(state: dict[str, Any], *, spacy_enabled: bool = True) -> Cont
     return signals
 
 
-def enrich_query(question: str, signals: ContextSignal) -> tuple[str, bool]:
+def enrich_query(question: str, signals: ContextSignal, kg: Any = None) -> tuple[str, bool]:
     """Monta query contextualizada com metadata estruturada.
 
     Retorna (query_enriquecida, foi_enriquecida).
 
     NUNCA concatena texto cru do history — só usa campos estruturados
     (domínio validado, entidades extraídas por regex/spaCy).
+
+    `kg` (Semiose — Camada A+B, opt-in): se fornecido, injeta os vizinhos
+    1-hop das entidades resolvidas no grafo, dando contexto relacional
+    determinístico ao classificador. Graceful: KG fora → ignorado.
     """
     # Sem sinais úteis → retorna original.
     if not signals.last_domain and not signals.recent_entities:
@@ -215,6 +258,12 @@ def enrich_query(question: str, signals: ContextSignal) -> tuple[str, bool]:
         parts.append(f"domínio: {signals.last_domain}")
     if signals.recent_entities:
         parts.append(f"entidades: {', '.join(signals.recent_entities[:5])}")
+
+    # Realimentação do KG: vizinhos 1-hop das entidades (determinístico, graceful).
+    if kg is not None and signals.recent_entities:
+        neighbors = kg_neighbors(signals.recent_entities, kg)
+        if neighbors:
+            parts.append(f"relacionado: {', '.join(neighbors)}")
 
     if not parts:
         return question, False

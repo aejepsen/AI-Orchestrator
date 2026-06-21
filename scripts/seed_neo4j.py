@@ -75,15 +75,57 @@ _ORDERS = [
 
 _CUSTOMERS = sorted({c for c, _, _ in _ORDERS})
 
-# Finanças: contrapartes (pagar/receber)
-_COUNTERPARTIES_PAGAR = [
-    "Imobiliária Paulista Ltda",
-    "TechSoft Brasil S.A.",
-    "Vetta Consultoria",
-    "Enel Distribuição SP",
-    "Kalunga Comércio",
-    "Agência Bossa Nova",
+# Finanças: contas a pagar reais (espelham services/financas/seed.py).
+# (descricao, fornecedor, valor, status) — a despesa vira nó; o fornecedor a EMITE.
+_EXPENSES = [
+    ("Aluguel do escritório", "Imobiliária Paulista Ltda", 8_500.00, "aberta"),
+    ("Licenças de software anuais", "TechSoft Brasil S.A.", 3_200.00, "aberta"),
+    ("Consultoria de implantação ERP", "Vetta Consultoria", 62_000.00, "aberta"),
+    ("Energia elétrica", "Enel Distribuição SP", 1_840.50, "paga"),
+    ("Material de escritório", "Kalunga Comércio", 487.90, "aberta"),
+    ("Campanha de marketing digital", "Agência Bossa Nova", 24_000.00, "aberta"),
 ]
+
+# Alçada de aprovação — espelha services/financas/rules.required_approver_role:
+# ≤ R$5.000 auto-aprovada; ≤ R$50.000 exige 'gerente'; acima exige 'diretor'.
+_AUTO_APPROVAL_LIMIT = 5_000.00
+_MANAGER_APPROVAL_LIMIT = 50_000.00
+
+# Cargos de aprovação (rh) — alvo das relações cross-domain de finanças.
+_APPROVAL_ROLES = ("gerente", "diretor")
+
+# Fornecedores que abastecem o estoque (cross-domain financas→estoque).
+# (fornecedor, [categorias de estoque])
+_SUPPLIES = [
+    ("Kalunga Comércio", ["Periféricos", "Acessórios"]),
+]
+
+# Economia por SKU (espelha services/estoque/seed.py): preço, saldo, ponto de reposição.
+# sku -> (unit_price, on_hand, reorder_point)
+_PRODUCT_STOCK = {
+    "CAD-ERG-001": (1_450.00, 32, 10),
+    "MES-ELE-002": (2_280.00, 8, 12),
+    "MON-27P-003": (2_150.00, 45, 15),
+    "NTB-DEV-004": (9_800.00, 6, 8),
+    "TEC-MEC-005": (520.00, 120, 30),
+    "MOU-ERG-006": (310.00, 75, 25),
+    "HUB-USB-007": (420.00, 18, 20),
+    "CAM-FHD-008": (480.00, 54, 15),
+    "HEA-BTH-009": (890.00, 40, 12),
+    "SUP-NTB-010": (180.00, 200, 50),
+}
+
+# Reservas ativas (espelha services/estoque/seed.py) p/ disponível e abaixo do ponto.
+_RESERVATIONS = {"MON-27P-003": 10, "NTB-DEV-004": 2, "TEC-MEC-005": 20}
+
+
+def _required_approver(amount: float) -> str | None:
+    """Alçada mínima exigida para a despesa (espelha o serviço Finanças)."""
+    if amount <= _AUTO_APPROVAL_LIMIT:
+        return None
+    if amount <= _MANAGER_APPROVAL_LIMIT:
+        return "gerente"
+    return "diretor"
 
 _COUNTERPARTIES_RECEBER = [
     "Lojas Andrade S.A.",
@@ -136,6 +178,20 @@ def _seed(session) -> dict[str, int]:  # noqa: ANN001
             b_name=category, b_type="categoria", b_domain="estoque",
         )
         counts["relations"] += 1
+
+    # ── Economia por produto (estoque): preço, saldo, ponto de reposição ──
+    # Espelha services/estoque: disponível = on_hand − reservas; abaixo do ponto
+    # quando disponível < reorder_point. Enriquece o nó para o expand_context.
+    for sku, (price, on_hand, reorder) in _PRODUCT_STOCK.items():
+        reserved = _RESERVATIONS.get(sku, 0)
+        available = on_hand - reserved
+        session.run(
+            "MATCH (e:Entity {sku: $sku, type: 'produto', domain: 'estoque'}) "
+            "SET e.unit_price = $price, e.on_hand = $on_hand, e.reserved = $reserved, "
+            "e.available = $available, e.reorder_point = $reorder, e.below_reorder = $below",
+            sku=sku, price=price, on_hand=on_hand, reserved=reserved,
+            available=available, reorder=reorder, below=available < reorder,
+        )
 
     # ── Departamentos (rh) ────────────────────────────────────────────
     for dept in _DEPARTMENTS:
@@ -202,10 +258,47 @@ def _seed(session) -> dict[str, int]:  # noqa: ANN001
                 counts["relations"] += 1
                 seen_comprou.add((customer, product_name))
 
-    # ── Contrapartes (finanças) — fornecedores ────────────────────────
-    for name in _COUNTERPARTIES_PAGAR:
-        session.run(_MERGE_ENTITY, name=name, type="fornecedor", domain="financas", sku=None)
+    # ── Cargos de aprovação (rh) — alvo de relações cross-domain de finanças ──
+    for role in _APPROVAL_ROLES:
+        session.run(_MERGE_ENTITY, name=role, type="cargo", domain="rh", sku=None)
         counts["entities"] += 1
+
+    # ── Contrapartes (finanças) — fornecedores + despesas (contas a pagar) ──
+    # Cada fornecedor EMITE uma despesa; despesa acima da alçada REQUER_APROVACAO
+    # de um cargo (rh) — relação cross-domain financas→rh com a regra de negócio real.
+    for descricao, fornecedor, valor, status in _EXPENSES:
+        session.run(_MERGE_ENTITY, name=fornecedor, type="fornecedor", domain="financas", sku=None)
+        counts["entities"] += 1
+        session.run(
+            "MERGE (d:Entity {name: $name, type: 'despesa', domain: 'financas'}) "
+            "SET d.amount = $valor, d.status = $status",
+            name=descricao, valor=valor, status=status,
+        )
+        counts["entities"] += 1
+        session.run(
+            _MERGE_REL % "EMITE",
+            a_name=fornecedor, a_type="fornecedor", a_domain="financas",
+            b_name=descricao, b_type="despesa", b_domain="financas",
+        )
+        counts["relations"] += 1
+        required = _required_approver(valor)
+        if required is not None:
+            session.run(
+                _MERGE_REL % "REQUER_APROVACAO",
+                a_name=descricao, a_type="despesa", a_domain="financas",
+                b_name=required, b_type="cargo", b_domain="rh",
+            )
+            counts["relations"] += 1
+
+    # ── Fornecedores que abastecem o estoque (cross-domain financas→estoque) ──
+    for fornecedor, categorias in _SUPPLIES:
+        for categoria in categorias:
+            session.run(
+                _MERGE_REL % "ABASTECE",
+                a_name=fornecedor, a_type="fornecedor", a_domain="financas",
+                b_name=categoria, b_type="categoria", b_domain="estoque",
+            )
+            counts["relations"] += 1
 
     # ── Contrapartes (finanças) — clientes recebíveis ─────────────────
     # Cross-domain: contraparte recebível (financas) → cliente (vendas)

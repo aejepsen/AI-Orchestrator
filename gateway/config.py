@@ -111,6 +111,12 @@ class Settings:
     neo4j_uri: str = field(default_factory=lambda: os.environ.get("NEO4J_URI", "bolt://localhost:7687"))
     neo4j_user: str = field(default_factory=lambda: os.environ.get("NEO4J_USER", "neo4j"))
     neo4j_password: str = field(default_factory=lambda: os.environ.get("NEO4J_PASSWORD", "changeme"))
+    # Semiose — Camada A+B: realimenta o enricher com vizinhos 1-hop do KG na
+    # query enviada ao classificador (opt-in). Requer NEO4J_ENABLED. Default off
+    # até validação em eval (pode causar over-routing em queries single-domain).
+    kg_enrich_enabled: bool = field(
+        default_factory=lambda: os.environ.get("KG_ENRICH_ENABLED", "0") not in ("0", "false", "False")
+    )
     # Pool dedicado para execução do grafo (evita competir com asyncio default pool).
     max_graph_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_GRAPH_WORKERS", "4")))
     # Timeout global de request SSE (segundos). Independente do LLM_TIMEOUT_S.

@@ -237,7 +237,9 @@ class GatewayGraph:
             return {}
 
         signals = gather_signals(state, spacy_enabled=self._settings.spacy_enabled if self._settings else True)
-        enriched_query, was_enriched = enrich_query(state["sanitized"], signals)
+        # Semiose — Camada A+B (opt-in): realimenta o enricher com vizinhos do KG.
+        kg = self._knowledge_graph if (self._settings and self._settings.kg_enrich_enabled) else None
+        enriched_query, was_enriched = enrich_query(state["sanitized"], signals, kg=kg)
 
         update: GraphState = {
             "sanitized": enriched_query,

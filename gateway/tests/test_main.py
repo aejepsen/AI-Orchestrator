@@ -25,7 +25,7 @@ class FakeGraph:
         self._clarification = clarification
         self._boom = boom
 
-    def stream(self, question: str, *, trace_id: str | None = None, on_agent=None, thread_id: str | None = None, on_confirm=None):
+    def stream(self, question: str, *, history=None, trace_id: str | None = None, on_agent=None, thread_id: str | None = None, on_confirm=None):
         if self._boom:
             raise RuntimeError("grafo explodiu")
         yield {"sanitize": {"sanitized": question}}

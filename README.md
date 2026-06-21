@@ -25,9 +25,10 @@ Arquitetura
 ```
                        ┌────────────────────────────────────────────────┐
                        │  Gateway (FastAPI, porta 8100)                 │
- cliente ─ POST /chat ▶│  LangGraph: sanitize → classify ──┬─ clarif.   │
-           (SSE)       │  classify = semântico→LLM→léxico  │            │
-                       │            dispatch (fan-out) ────┤            │
+ cliente ─ POST /chat ▶│  LangGraph: sanitize → enrich → classify ─┬ clarif.│
+           (SSE)       │  enrich = Camada A (ctx + KG, opt-in)     │        │
+                       │  classify = semântico→LLM→léxico          │        │
+                       │            dispatch (fan-out) ───────────┤        │
                        │            synthesize (fan-in) ───┘            │
                        └──────┬───────────────┬──────────────┬──────────┘
                               │ tools         │ /api/chat    │ kNN cosine
@@ -53,6 +54,25 @@ Arquitetura
 | **Semantic router como cache, não como classificador** (Qdrant kNN, threshold 0.92 + consenso unânime + score gap ≥0.05) | Com threshold 0.80 o eval leave-one-out caiu pra 84.1%: vizinhos a score 0.83–0.88 com conjuntos de domínios diferentes erravam os casos multi-domínio. A banda 0.80–0.90 não separa acerto de erro; a 0.92 a camada só dispara em pergunta quase idêntica e o LLM classifier decide o resto. Score gap filter (`min_score_gap=0.05`) rejeita hits onde top-1 e top-2 estão muito próximos (ambiguidade). |
 | **SBERT embeddings substituíram nomic-embed-text** | `paraphrase-multilingual-MiniLM-L12-v2` (384 dim, CPU, ~120 MB) roda no gateway via sentence-transformers — sem dependência do Ollama para embeddings. Embedder Protocol (`SBERTEmbedder` + `OllamaEmbedder` fallback) garante degradação graceful. |
 | **Injection detector BERT fine-tunado** | BERTimbau (`neuralmind/bert-base-portuguese-cased`) fine-tunado com 400 exemplos sintéticos (200 injection + 200 legítimos). 100% accuracy na validação. Classifier binário no gateway (`gateway/injection_classifier.py`), modelo 417 MB em volume mount `./models:/app/models`. |
+
+Semiose — pipeline contextual (Camadas A/B/C)
+
+Camada de compreensão contextual inspirada na semiose triádica de Peirce (Signo → Objeto → Interpretante), mapeada em pontos do grafo. Cada camada é **opt-in por flag** e degrada graceful (Harness antes de Model).
+
+![Semiose — pipeline contextual](docs/semiose-flow.png)
+
+- **Camada A — `enrich`** (`gateway/query_enricher.py`): nó entre `sanitize` e `classify`. Reconstrói a query com contexto estruturado (domínio do turno anterior `_last_route` + entidades via regex/spaCy) **sem chamar LLM**. Opcionalmente realimenta com vizinhos 1-hop do Knowledge Graph (`KG_ENRICH_ENABLED`).
+- **Camada B — Knowledge Graph** (`gateway/knowledge_graph.py`, Neo4j): **tool virtual** `expand_context` registrada no `ToolRegistry` — o agente decide se/quando expandir (least-privilege, protegida por circuit breaker). Seed idempotente em `scripts/seed_neo4j.py`: entidades (produto, fornecedor, funcionário, cliente, despesa, cargo) e relações (`EMITE`, `REQUER_APROVACAO` por alçada, `ABASTECE`, `COMPROU`, `VENDEU_PARA`) — **0 fornecedores órfãos**.
+- **Camada C — re-rank no SemanticRouter** (`gateway/semantic_router.py`): boost contextual aditivo (+0,05) quando há `context_domain`; **cross-encoder como desempate** (S3) restrito ao top-2 ambíguo (domínios diferentes + gap pequeno). Índice contextual S1: prefixa o domínio do exemplo antes de embedar no Qdrant.
+
+| Métrica (eval) | Resultado |
+|---|---|
+| Roteamento multi-domínio (decomposição conceito→domínio no prompt) | **88,9% → 93,7%** (gate ≥90% PASS) |
+| KG — fornecedores órfãos · Relation Validity@5 | **0** · **0,929** |
+| Camada A — Entity Propagation F1 · FER | **0,973** · **0,026** (150 casos, 4/4 gates) |
+| Eval Semiose (`evals/eval_semiose.py`) | **12 métricas** (BERTScore opcional + Routing Failure Rate) |
+
+> Flags: `ENRICHER_ENABLED`, `SPACY_ENABLED`, `NEO4J_ENABLED`, `KG_ENRICH_ENABLED`, `RERANK_ENABLED`, `CONTEXT_BOOST`, `CONTEXTUAL_EMBEDDINGS_ENABLED`, `RERANK_CROSS_ENCODER_ENABLED`. Plano e desvios detalhados em `PLANO_SEMIOSE.md`.
 
 Latências medidas (warm, RTX 3060 + split CPU)
 
@@ -171,9 +191,12 @@ Estrutura
 ```
 gateway/            # Experience Layer: graph (LangGraph), router (semântico→LLM→léxico), agents, sanitize, SSE
   main.py           #   FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume, GET /metrics, GET /eval-results
-  graph.py          #   LangGraph StateGraph: sanitize → classify → dispatch → synthesize
+  graph.py          #   LangGraph StateGraph: sanitize → enrich → classify → dispatch → synthesize
   agents.py         #   loop de tool-calling por domínio + system prompt anti-fabricação
-  router.py         #   classify_intent: semântico → LLM → léxico (score gap filter)
+  router.py         #   classify_intent: semântico → LLM → léxico (decomposição multi-domínio, score gap filter)
+  query_enricher.py #   Semiose Camada A: enrich contextual (regex/spaCy + _last_route + KG opt-in)
+  knowledge_graph.py#   Semiose Camada B: adapter Neo4j + tool virtual expand_context (1-hop)
+  semantic_router.py#   Semiose Camada C: Qdrant kNN + boost contextual + cross-encoder desempate (S3)
   sanitize.py       #   boundary anti-injection (ChatML strip + 14 regex + BERT classifier)
   security.py       #   AccessTokenGuard (fail-closed) + RateLimiter (max_entries + eviction) + client_ip
   config.py         #   Settings dataclass (todas as envs num lugar só)
@@ -186,11 +209,14 @@ gateway/            # Experience Layer: graph (LangGraph), router (semântico→
 gateway/tools/      # registry OpenAPI→tools + circuit breaker
 services/           # 4 microsserviços FastAPI (financas, rh, estoque, vendas) — CRUD completo
 frontend/           # 3 páginas (Vite + React + Tailwind v4): Chat, Dashboard, Evals
-evals/              # golden sets + gates (domains, routing, injection, demo)
+evals/              # golden sets + gates (domains, routing, injection, demo, semiose)
+  eval_semiose.py   #   Semiose: 12 métricas (Camadas A/B/C) + Routing Failure Rate + BERTScore
+scripts/            # seed_neo4j.py (Knowledge Graph idempotente) + tests
 train/              # LoRA fine-tune: build_dataset.py, colab notebooks, Modelfile
-docs/               # PLANO_LORA_9B.md (treino + resultados), SKILL_MULTIAGENT.md
+docs/               # PLANO_LORA_9B.md, SKILL_MULTIAGENT.md, AUDIT_2026-06-14.md, gen_diagrams.py (8 PNGs)
 demo/               # transcripts gravados das 5 conversas
 PLANO_EXECUCAO.md   # plano por fase com as-built e números medidos
+PLANO_SEMIOSE.md    # Semiose: plano das Camadas A/B/C, desvios e resultados de eval
 PROPOSAL.md         # visão do padrão AI Gateway
 ```
 

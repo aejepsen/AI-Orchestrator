@@ -213,7 +213,7 @@
 
 <!-- 01 · Capa -->
 <section class="slide" id="s1">
-  <span class="num">01 / 14</span>
+  <span class="num">01 / 15</span>
   <div class="kicker">suasalada.com.br · em produção</div>
   <h1>AI-Orchestrator</h1>
   <p class="sub" style="margin-top:22px">
@@ -232,7 +232,7 @@
 
 <!-- 02 · Problema -->
 <section class="slide" id="s2">
-  <span class="num">02 / 14</span>
+  <span class="num">02 / 15</span>
   <div class="kicker">O problema</div>
   <h2>Perguntas de negócio cruzam sistemas.<br>Pessoas não deveriam precisar cruzá-los manualmente.</h2>
   <div class="grid3">
@@ -256,21 +256,21 @@
 
 <!-- 03 · Solução -->
 <section class="slide" id="s3">
-  <span class="num">03 / 14</span>
+  <span class="num">03 / 15</span>
   <div class="kicker">A solução</div>
   <h2>Fluxo completo — da pergunta à resposta auditável</h2>
   <p class="sub">Browser → Cloudflare Tunnel → Gateway FastAPI → grafo LangGraph → agentes em paralelo
   → microserviços com as regras → síntese. Progresso transmitido por SSE em tempo real
   (<code>route</code> · <code>agent</code> · <code>final</code>).</p>
   <figure>
-    <img src="architecture-flow.png?v=20260611" alt="Fluxo completo do AI-Orchestrator">
+    <img src="architecture-flow.png?v=20260621" alt="Fluxo completo do AI-Orchestrator">
     <figcaption>Arquitetura end-to-end em produção. Inferência local via Ollama — nenhum dado sai do perímetro.</figcaption>
   </figure>
 </section>
 
 <!-- 04 · Orquestração -->
 <section class="slide" id="s4">
-  <span class="num">04 / 14</span>
+  <span class="num">04 / 15</span>
   <div class="kicker">Orquestração</div>
   <h2>LangGraph: 5 nós, decisões explícitas</h2>
   <p class="sub">Sanitização anti-injeção → classificação em três camadas (semântica via Qdrant kNN,
@@ -278,44 +278,44 @@
   Pergunta já conhecida resolve em ~0,1&nbsp;s por similaridade vetorial, sem chamar o LLM.
   Fora de escopo? O grafo pede esclarecimento em vez de alucinar.</p>
   <figure>
-    <img src="langgraph-flow.png?v=20260611" alt="Grafo LangGraph do gateway">
+    <img src="langgraph-flow.png?v=20260621" alt="Grafo LangGraph do gateway">
     <figcaption>StateGraph do gateway (gateway/graph.py) — cada transição é observável e testada.</figcaption>
   </figure>
 </section>
 
 <!-- 05 · Microserviços -->
 <section class="slide" id="s5">
-  <span class="num">05 / 14</span>
+  <span class="num">05 / 15</span>
   <div class="kicker">Domínios</div>
   <h2>A regra de negócio vive na API — nunca no prompt</h2>
   <p class="sub">Quatro microserviços FastAPI independentes, cada um com seu banco e suas regras
   (alçadas, CLT, reposição, descontos). O LLM consulta e executa; quem valida é o serviço.
   Erro 422 volta estruturado com a regra violada e reentra no loop do agente.</p>
   <figure>
-    <img src="microservices.png?v=20260611" alt="Mapa dos microserviços de domínio">
+    <img src="microservices.png?v=20260621" alt="Mapa dos microserviços de domínio">
     <figcaption>Gateway descobre as capacidades de cada serviço via OpenAPI — adicionar um domínio novo não muda o orquestrador.</figcaption>
   </figure>
 </section>
 
 <!-- 06 · Agentes -->
 <section class="slide" id="s6">
-  <span class="num">06 / 14</span>
+  <span class="num">06 / 15</span>
   <div class="kicker">Agentes especialistas</div>
   <h2>Um agente por domínio, least-privilege por construção</h2>
   <p class="sub">Mesmo modelo residente, mas cada agente só enxerga as tools do seu microserviço.
   Loop limitado (≤ 6 iterações + deadline) e toda afirmação numérica obrigatoriamente
   rastreável a uma chamada de tool.</p>
   <div class="grid2">
-    <figure style="margin-top:0"><img src="agent-financas.png?v=20260611" alt="Agente Finanças"></figure>
-    <figure style="margin-top:0"><img src="agent-rh.png?v=20260611" alt="Agente RH"></figure>
-    <figure style="margin-top:0"><img src="agent-estoque.png?v=20260611" alt="Agente Estoque"></figure>
-    <figure style="margin-top:0"><img src="agent-vendas.png?v=20260611" alt="Agente Vendas"></figure>
+    <figure style="margin-top:0"><img src="agent-financas.png?v=20260621" alt="Agente Finanças"></figure>
+    <figure style="margin-top:0"><img src="agent-rh.png?v=20260621" alt="Agente RH"></figure>
+    <figure style="margin-top:0"><img src="agent-estoque.png?v=20260621" alt="Agente Estoque"></figure>
+    <figure style="margin-top:0"><img src="agent-vendas.png?v=20260621" alt="Agente Vendas"></figure>
   </div>
 </section>
 
 <!-- 07 · Segurança -->
 <section class="slide" id="s7">
-  <span class="num">07 / 14</span>
+  <span class="num">07 / 15</span>
   <div class="kicker">Segurança</div>
   <h2>Defesa em camadas, validada por evals</h2>
   <div class="grid3">
@@ -350,7 +350,7 @@
 
 <!-- 08 · Stack -->
 <section class="slide" id="s8">
-  <span class="num">08 / 14</span>
+  <span class="num">08 / 15</span>
   <div class="kicker">Ferramentas</div>
   <h2>Stack 100% open-source — zero licença, zero vendor lock-in</h2>
   <div style="margin-top:28px">
@@ -389,7 +389,7 @@
 
 <!-- 09 · SBERT Embeddings -->
 <section class="slide" id="s9">
-  <span class="num">09 / 14</span>
+  <span class="num">09 / 15</span>
   <div class="kicker">BERT Stack</div>
   <h2>SBERT Embeddings — roteamento semântico em CPU</h2>
   <p class="sub">Embeddings dedicados para o Semantic Router, rodando inteiramente em CPU
@@ -418,7 +418,7 @@
 
 <!-- 10 · Injection Detector -->
 <section class="slide" id="s10">
-  <span class="num">10 / 14</span>
+  <span class="num">10 / 15</span>
   <div class="kicker">BERT Stack</div>
   <h2>Injection Detector — BERTimbau fine-tunado</h2>
   <p class="sub">Classificador binário treinado sobre BERTimbau para detectar e bloquear
@@ -447,7 +447,7 @@
 
 <!-- 11 · Resultados -->
 <section class="slide" id="s11">
-  <span class="num">11 / 14</span>
+  <span class="num">11 / 15</span>
   <div class="kicker">BERT Stack</div>
   <h2>Resultados — gates de qualidade validados</h2>
   <div class="grid3">
@@ -473,7 +473,7 @@
 
 <!-- 12 · Arquitetura BERT Stack -->
 <section class="slide" id="s12">
-  <span class="num">12 / 14</span>
+  <span class="num">12 / 15</span>
   <div class="kicker">BERT Stack</div>
   <h2>Arquitetura — SBERT em CPU, Qwen em GPU</h2>
   <p class="sub">Dois modelos BERT rodando em CPU, sem competir com o LLM por VRAM.
@@ -497,9 +497,40 @@
   Queries já conhecidas resolvem em ~0.02 s pelo Semantic Router sem acionar o LLM.</p>
 </section>
 
-<!-- 13 · Impacto financeiro -->
+<!-- 13 · Semiose -->
+<section class="slide" id="s-semiose">
+  <span class="num">13 / 15</span>
+  <div class="kicker">Compreensão contextual</div>
+  <h2>Semiose — contexto antes do significado</h2>
+  <p class="sub">Camada inspirada na semiose triádica de Peirce (Signo → Objeto → Interpretante),
+  mapeada no grafo. Três camadas opt-in que degradam graceful: enriquecer a query com contexto,
+  expandir relações em um grafo de conhecimento e re-ranquear a rota semântica.</p>
+  <figure>
+    <img src="semiose-flow.png?v=20260621" alt="Pipeline Semiose — Camadas A/B/C">
+    <figcaption>Camada A (enrich) · Camada B (Knowledge Graph em Neo4j, tool virtual) · Camada C (re-rank com cross-encoder) — cada uma controlada por flag.</figcaption>
+  </figure>
+  <div class="grid3">
+    <div class="card accent-green">
+      <h3>Camada A — Enrich</h3>
+      <p>Contexto estruturado (domínio anterior + entidades) sem chamar LLM. Realimenta com
+      vizinhos do grafo. Entity Propagation F1 <strong style="color:var(--green)">0,973</strong>.</p>
+    </div>
+    <div class="card accent-amber">
+      <h3>Camada B — Knowledge Graph</h3>
+      <p>Neo4j como tool virtual <code>expand_context</code> (least-privilege). Alçadas de aprovação,
+      fornecedores e estoque conectados — <strong style="color:var(--green)">0 órfãos</strong>, Relation Validity@5 <strong style="color:var(--green)">0,929</strong>.</p>
+    </div>
+    <div class="card accent-violet">
+      <h3>Roteamento multi-domínio</h3>
+      <p>Decomposição conceito→domínio + permissão→clarification no classifier.
+      Acurácia <strong style="color:var(--green)">88,9% → 93,7%</strong> (gate ≥90% PASS).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 14 · Impacto financeiro -->
 <section class="slide" id="s13">
-  <span class="num">13 / 14</span>
+  <span class="num">14 / 15</span>
   <div class="kicker">Conclusões · impacto financeiro</div>
   <h2>On-premise: custo marginal por consulta → zero</h2>
   <p class="sub">Cada consulta multi-domínio dispara 8–15 chamadas de LLM (classificação,
@@ -553,7 +584,7 @@
 
 <!-- 14 · Fechamento -->
 <section class="slide" id="s14">
-  <span class="num">14 / 14</span>
+  <span class="num">15 / 15</span>
   <div class="kicker">Conclusão</div>
   <h2>IA corporativa com soberania de dados,<br>custo previsível e regra de negócio auditável.</h2>
   <div class="grid3">

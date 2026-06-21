@@ -320,15 +320,18 @@ def gnode(x, y, w, h, title, lines, ec=BORDER, tc=TXT):
 ax.scatter([0.06], [0.79], s=420, color=GREEN, zorder=4)
 ax.text(0.06, 0.745, "START", color=GREEN, fontsize=10, fontweight="bold", ha="center")
 
-gnode(0.13, 0.73, 0.20, 0.12, "sanitize",
-      ["BERT injection detector", "(BERTimbau fine-tunado)", "regex fallback"], ec=BORDER)
+gnode(0.10, 0.73, 0.135, 0.12, "sanitize",
+      ["BERT + regex", "anti-injection"], ec=BORDER)
+gnode(0.245, 0.73, 0.125, 0.12, "enrich",
+      ["Camada A", "ctx + KG", "(opt-in)"], ec=GREEN, tc=GREEN)
 gnode(0.38, 0.70, 0.23, 0.15, "classify",
       ["semântico (Qdrant kNN ≥ 0.92)", "→ LLM → léxico · guards", "→ RoutePlan {domains, plan}"], ec=BORDER)
 ax.text(0.495, 0.675, "emite evento SSE “route”", color=MUT, fontsize=8.6,
         ha="center", style="italic")
 
-arrow(ax, 0.08, 0.79, 0.13, 0.79, color=GREEN)
-arrow(ax, 0.33, 0.79, 0.38, 0.79, color=MUT)
+arrow(ax, 0.08, 0.79, 0.10, 0.79, color=GREEN)
+arrow(ax, 0.235, 0.79, 0.245, 0.79, color=GREEN)
+arrow(ax, 0.37, 0.79, 0.38, 0.79, color=MUT)
 
 # SBERT embedder (coluna esquerda, abaixo de sanitize com gap claro)
 gnode(0.02, 0.57, 0.22, 0.095, "SBERT Embedder",
@@ -367,6 +370,14 @@ for i, (nm, p) in enumerate(agents):
     arrow(ax, 0.61, 0.51, 0.69, y + 0.052, color=BLUE, lw=1.1)
     arrow(ax, 0.69, y + 0.03, 0.55, 0.225, color=BLUE, lw=0.8, style="-|>")
 
+# Neo4j — Camada B (Knowledge Graph) como tool virtual dos agentes
+gnode(0.02, 0.21, 0.26, 0.12, "Neo4j :7687",
+      ["Camada B — Knowledge Graph", "tool virtual expand_context (1-hop)"], ec=AMBER, tc=AMBER)
+arrow(ax, 0.28, 0.30, 0.69, 0.305, color=AMBER, lw=1.0)
+ax.text(0.47, 0.315, "expand_context (least-privilege)", color=AMBER, fontsize=7.8, style="italic")
+arrow(ax, 0.13, 0.33, 0.30, 0.73, color=AMBER, lw=0.8, style="-|>")
+ax.text(0.165, 0.52, "KG→enrich", color=AMBER, fontsize=7.2, style="italic", rotation=68)
+
 gnode(0.38, 0.13, 0.23, 0.115, "synthesize",
       ["LLM consolida respostas", "dos agentes → final_answer"], ec=BORDER)
 ax.text(0.62, 0.085, "emite evento SSE “final”", color=MUT, fontsize=8.6,
@@ -377,4 +388,79 @@ arrow(ax, 0.495, 0.105, 0.495, 0.062, color=MUT)
 
 fig.savefig(f"{DOCS}/langgraph-flow.png", facecolor=BG, bbox_inches="tight")
 plt.close(fig)
-print("ok: 7 imagens geradas em docs/")
+
+# ----------------------------------------------------------------------------
+# 5) Semiose — pipeline contextual (Camadas A / B / C + S1/S3/S6)
+# ----------------------------------------------------------------------------
+fig, ax = base_ax((14, 8.6))
+ax.text(0.5, 0.965, "AI-Orchestrator — Semiose: contexto antes do significado",
+        color=TXT, fontsize=17, fontweight="bold", ha="center")
+ax.text(0.5, 0.928, "Signo → Objeto → Interpretante (Peirce) mapeado no grafo · "
+        "cada camada é opt-in e degrada graceful (Harness antes de Model)",
+        color=MUT, fontsize=9.5, ha="center")
+
+
+def snode(x, y, w, h, title, lines, ec=BORDER, tc=TXT, ts=12, ss=8.4):
+    box(ax, x, y, w, h, fc=PANEL, ec=ec, lw=1.6)
+    ax.text(x + w / 2, y + h - 0.02, title, color=tc, fontsize=ts,
+            fontweight="bold", ha="center", va="top")
+    ax.text(x + w / 2, y + h - 0.075, "\n".join(lines), color=MUT, fontsize=ss,
+            ha="center", va="top", linespacing=1.6)
+
+
+# fluxo base
+y0 = 0.70
+ax.scatter([0.045], [y0 + 0.075], s=360, color=GREEN, zorder=4)
+ax.text(0.045, y0 + 0.015, "query", color=GREEN, fontsize=9, ha="center", fontweight="bold")
+snode(0.10, y0, 0.175, 0.155, "sanitize",
+      ["anti-injection", "(BERT + regex)"], ec=BORDER)
+snode(0.31, y0, 0.205, 0.155, "enrich — Camada A",
+      ["signo contextualizado", "regex/spaCy + _last_route", "+ vizinhos do KG (opt-in)"], ec=GREEN, tc=GREEN)
+snode(0.565, y0, 0.205, 0.155, "classify — Camada C",
+      ["Qdrant kNN + consenso", "boost contextual +0,05", "cross-encoder desempata (S3)"], ec=VIOLET, tc=VIOLET)
+snode(0.80, y0, 0.165, 0.155, "dispatch",
+      ["fan-out por domínio", "agentes + KG tool"], ec=BLUE, tc=BLUE)
+arrow(ax, 0.07, y0 + 0.077, 0.10, y0 + 0.077, color=GREEN)
+arrow(ax, 0.275, y0 + 0.077, 0.31, y0 + 0.077, color=MUT)
+arrow(ax, 0.515, y0 + 0.077, 0.565, y0 + 0.077, color=MUT)
+arrow(ax, 0.77, y0 + 0.077, 0.80, y0 + 0.077, color=MUT)
+
+# Camada B — Knowledge Graph (Neo4j) alimentando enrich e agentes
+snode(0.305, 0.40, 0.46, 0.20, "Camada B — Knowledge Graph (Neo4j)",
+      ["tool virtual expand_context · travessia 1-hop dirigida por domínio",
+       "entidades: produto · fornecedor · funcionário · cliente · despesa · cargo",
+       "relações: EMITE · REQUER_APROVACAO (alçada) · ABASTECE · COMPROU · VENDEU_PARA",
+       "realimenta o enrich (KG_ENRICH_ENABLED) e o loop dos agentes (least-privilege)"],
+      ec=AMBER, tc=AMBER, ts=12.5, ss=8.6)
+arrow(ax, 0.40, 0.60, 0.40, y0, color=AMBER, lw=1.3)
+ax.text(0.345, 0.66, "KG→enrich", color=AMBER, fontsize=7.8, ha="center", style="italic")
+arrow(ax, 0.66, 0.60, 0.84, y0, color=AMBER, lw=1.3)
+ax.text(0.78, 0.66, "expand_context", color=AMBER, fontsize=7.8, ha="center", style="italic")
+
+# coluna direita: índice contextual (S1) + embedder
+snode(0.80, 0.43, 0.165, 0.14, "Índice contextual",
+      ["SBERT MiniLM-L12", "(384d, CPU)", "S1: prefixa domínio", "antes de embedar"],
+      ec=PINK, tc=PINK, ts=11, ss=8)
+arrow(ax, 0.8825, 0.57, 0.70, y0, color=PINK, lw=1.0)
+
+# faixa inferior: resultados medidos
+ax.text(0.5, 0.315, "Resultados medidos (eval)", color=TXT, fontsize=11,
+        fontweight="bold", ha="center")
+cards = [
+    (GREEN, "Roteamento multi-domínio", "88,9% → 93,7%", "decomposição conceito→domínio\n(gate ≥90% PASS)"),
+    (AMBER, "Knowledge Graph", "0 órfãos · 0,929", "fornecedores conectados\nRelation Validity@5"),
+    (GREEN, "Camada A — Enricher", "F1 0,973 · FER 0,026", "Entity Propagation\n150 casos, 4/4 gates"),
+    (VIOLET, "Eval Semiose (S6)", "12 métricas", "BERTScore + Routing\nFailure Rate"),
+]
+cw, cgap = 0.215, 0.025
+cx0 = (1 - 4 * cw - 3 * cgap) / 2
+for i, (ac, ttl, big, sub) in enumerate(cards):
+    x = cx0 + i * (cw + cgap)
+    box(ax, x, 0.045, cw, 0.235, fc=PANEL, ec=ac, lw=1.5)
+    ax.text(x + cw / 2, 0.255, ttl, color=MUT, fontsize=8.8, ha="center", fontweight="bold")
+    ax.text(x + cw / 2, 0.185, big, color=ac, fontsize=15.5, ha="center", fontweight="bold")
+    ax.text(x + cw / 2, 0.115, sub, color=MUT, fontsize=8, ha="center", linespacing=1.5)
+
+fig.savefig(f"{DOCS}/semiose-flow.png", facecolor=BG, bbox_inches="tight")
+plt.close(fig)
+print("ok: 8 imagens geradas em docs/")

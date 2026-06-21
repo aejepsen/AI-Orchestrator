@@ -30,9 +30,12 @@ AI-Orchestrator/
 ├── docker-compose.yml            # ollama, gateway, 4 microsserviços, qdrant, langfuse
 ├── gateway/                      # Experience Layer
 │   ├── main.py                   # FastAPI: POST /chat (SSE), POST /chat/{thread_id}/resume, GET /metrics, GET /eval-results
-│   ├── graph.py                  # LangGraph StateGraph: sanitize → classify → dispatch → synthesize
+│   ├── graph.py                  # LangGraph StateGraph: sanitize → enrich → classify → dispatch → synthesize
 │   ├── agents.py                 # loop tool-calling por domínio + system prompt anti-fabricação
-│   ├── router.py                 # classify_intent: semântico → LLM → léxico
+│   ├── router.py                 # classify_intent: semântico → LLM → léxico (decomposição multi-domínio)
+│   ├── query_enricher.py         # Semiose Camada A: enrich contextual (regex/spaCy + _last_route + KG opt-in)
+│   ├── knowledge_graph.py        # Semiose Camada B: adapter Neo4j + tool virtual expand_context
+│   ├── semantic_router.py        # Semiose Camada C: Qdrant kNN + boost contextual + cross-encoder (S3)
 │   ├── llm.py                    # cliente Ollama (chat/embed, think detection)
 │   ├── sanitize.py               # boundary anti-injection + 14 regex injection detection (log only)
 │   ├── security.py               # AccessTokenGuard (fail-closed) + RateLimiter + CF-Connecting-IP
@@ -197,3 +200,26 @@ Implementado sobre a PoC estabilizada com LoRA 9B.
 - Auditoria final: 0 CRITICO, 0 ALTO, 0 MEDIO (relatório em `docs/AUDIT_2026-06-14.md`)
 
 **Infra.** Volume mount `./models:/app/models` (injection classifier 417 MB). `models/` e `ebook-llm-on-premise/` adicionados ao `.gitignore`.
+
+### Fase 8 — Semiose: pipeline contextual (Camadas A/B/C) — ✅ EXECUTADA
+
+Camada de compreensão contextual inspirada na semiose triádica de Peirce (Signo → Objeto → Interpretante), mapeada em pontos do grafo. Cada camada é **opt-in por flag** e degrada graceful (Harness antes de Model). Plano completo, desvios e métricas em `PLANO_SEMIOSE.md`; diagrama em `docs/semiose-flow.png`.
+
+**Camada A — `enrich`** (`gateway/query_enricher.py`). Novo nó entre `sanitize` e `classify`. Reconstrói a query com contexto estruturado (domínio do turno anterior `_last_route` + entidades via regex/spaCy lazy) **sem LLM**. Realimenta opcionalmente com vizinhos 1-hop do KG (`KG_ENRICH_ENABLED`). Eval offline: Entity Propagation F1 **0,973**, FER **0,026**, Topic Switch Accuracy **0,963** (150 casos, 4/4 gates PASS).
+
+**Camada B — Knowledge Graph** (`gateway/knowledge_graph.py`, Neo4j). **Tool virtual** `expand_context` no `ToolRegistry` — o agente decide se/quando expandir (least-privilege, circuit breaker). Seed idempotente (`scripts/seed_neo4j.py`): produto, fornecedor, funcionário, cliente, despesa, cargo; relações `EMITE`, `REQUER_APROVACAO` (alçada por valor), `ABASTECE`, `COMPROU`, `VENDEU_PARA`. Enriquecimento eliminou os **6 fornecedores órfãos** e conectou finanças↔RH (alçada) e finanças↔estoque (fornecedores). Relation Validity@5 **0,929** (antes 0,914).
+
+**Camada C — re-rank no SemanticRouter** (`gateway/semantic_router.py`). Boost contextual aditivo (+0,05) quando há `context_domain`; **cross-encoder como desempate** (S3) restrito ao top-2 ambíguo (domínios divergentes + gap pequeno), preservando o cosseno no gate de aceitação. Índice contextual (S1): prefixa o domínio do exemplo antes de embedar no Qdrant. Medição: a banda de scores do embedder atual mantém o threshold 0,92 conservador; S1 não melhorou top-1 no A/B (33,3% vs 34,9%), então fica opt-in.
+
+**Roteamento multi-domínio.** Regra de **decomposição conceito→domínio** + **permissão/acesso → clarification** no prompt do classifier (exemplos de fraseado distinto do golden, sem leakage). Acurácia `eval_routing`: **88,9% → 93,7%** (gate ≥90% PASS), sem regressão em casos single-domínio.
+
+**Eval.** `evals/eval_semiose.py` (12 métricas nas 4 camadas) + `evals/tests/test_eval_semiose_s6.py`. Flag `--kg-enrich` em `eval_routing.py` para A/B do feedback do KG (resultado neutro no roteamento — o valor está no dispatch dos agentes). Novos testes: `test_query_enricher.py` (KG), `test_semantic_router_semiose.py` (S1/S3), `scripts/tests/test_seed_neo4j.py` (alçada).
+
+**Flags.** `ENRICHER_ENABLED`, `SPACY_ENABLED`, `NEO4J_ENABLED`, `KG_ENRICH_ENABLED`, `RERANK_ENABLED`, `CONTEXT_BOOST`, `CONTEXTUAL_EMBEDDINGS_ENABLED`, `RERANK_CROSS_ENCODER_ENABLED`, `CROSS_ENCODER_MODEL`.
+
+#### Gotchas encontrados
+
+1. **Cross-encoder vs consenso estrito.** Um *reorder* puro colidiria com os guards de threshold/consenso (top-2 com domínios divergentes → `None`). Fix: S3 é **desempate** restrito ao caso ambíguo, não reordenação geral.
+2. **API key do Qdrant nos evals.** `eval_semiose.py`/`eval_routing.py` davam 401 sem passar `api_key=settings.qdrant_api_key` ao `SemanticRouter`. Corrigido.
+3. **SKUs não-canônicos no golden.** `golden_routing.jsonl` tinha SKUs de 2 partes (`CAD-001`) divergentes dos serviços/KG (`CAD-ERG-001`). Canonicalizados para o formato 3-partes.
+4. **KG→enrich é neutro no roteamento.** Injetar vizinhos do KG na query do classifier não melhora a acurácia de rota (o LLM já decide bem); o ganho está no contexto do dispatch dos agentes. Mantido opt-in (`KG_ENRICH_ENABLED=0` default).

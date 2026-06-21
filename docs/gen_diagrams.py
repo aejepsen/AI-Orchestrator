@@ -220,10 +220,17 @@ ax.text(0.5, 0.955, "suasalada.com.br · POST /chat → SSE (route · agent · f
 
 def node(x, y, w, h, title, sub, ec=BORDER, fc=PANEL, ts=10.5, ss=7.6):
     box(ax, x, y, w, h, fc=fc, ec=ec, lw=1.5)
-    ax.text(x + w / 2, y + h - 0.012, title, color=TXT, fontsize=ts,
-            fontweight="bold", ha="center", va="top")
-    ax.text(x + w / 2, y + h - 0.033, sub, color=MUT, fontsize=ss,
-            ha="center", va="top", linespacing=1.4)
+    lines = sub.split("\n")
+    cy = y + h / 2
+    # bloco título + linhas centralizado verticalmente (passo ~ proporcional à fonte)
+    step = ss * 0.0011 + 0.0085
+    block_h = 0.022 + (len(lines) - 1) * step
+    top = cy + block_h / 2
+    ax.text(x + w / 2, top, title, color=TXT, fontsize=ts,
+            fontweight="bold", ha="center", va="center")
+    for i, ln in enumerate(lines):
+        ax.text(x + w / 2, top - 0.020 - i * step, ln, color=MUT, fontsize=ss,
+                ha="center", va="center")
 
 
 # ---- camada de entrada (horizontal, topo) ----
@@ -309,12 +316,17 @@ ax.text(0.5, 0.93, "POST /chat  →  SSE: route · agent · final", color=MUT,
         fontsize=10.5, ha="center")
 
 
-def gnode(x, y, w, h, title, lines, ec=BORDER, tc=TXT):
+def gnode(x, y, w, h, title, lines, ec=BORDER, tc=TXT, ts=12, ss=8.6):
     box(ax, x, y, w, h, fc=PANEL, ec=ec, lw=1.5)
-    ax.text(x + w / 2, y + h - 0.018, title, color=tc, fontsize=12,
-            fontweight="bold", ha="center", va="top")
-    ax.text(x + w / 2, y + h - 0.062, "\n".join(lines), color=MUT, fontsize=8.6,
-            ha="center", va="top", linespacing=1.6)
+    cy = y + h / 2
+    step = ss * 0.0013 + 0.0095
+    block_h = 0.030 + (len(lines) - 1) * step
+    top = cy + block_h / 2
+    ax.text(x + w / 2, top, title, color=tc, fontsize=ts,
+            fontweight="bold", ha="center", va="center")
+    for i, ln in enumerate(lines):
+        ax.text(x + w / 2, top - 0.030 - i * step, ln, color=MUT, fontsize=ss,
+                ha="center", va="center")
 
 
 ax.scatter([0.06], [0.79], s=420, color=GREEN, zorder=4)
@@ -402,10 +414,15 @@ ax.text(0.5, 0.928, "Signo → Objeto → Interpretante (Peirce) mapeado no graf
 
 def snode(x, y, w, h, title, lines, ec=BORDER, tc=TXT, ts=12, ss=8.4):
     box(ax, x, y, w, h, fc=PANEL, ec=ec, lw=1.6)
-    ax.text(x + w / 2, y + h - 0.02, title, color=tc, fontsize=ts,
-            fontweight="bold", ha="center", va="top")
-    ax.text(x + w / 2, y + h - 0.075, "\n".join(lines), color=MUT, fontsize=ss,
-            ha="center", va="top", linespacing=1.6)
+    cy = y + h / 2
+    step = ss * 0.0013 + 0.009
+    block_h = 0.030 + (len(lines) - 1) * step
+    top = cy + block_h / 2
+    ax.text(x + w / 2, top, title, color=tc, fontsize=ts,
+            fontweight="bold", ha="center", va="center")
+    for i, ln in enumerate(lines):
+        ax.text(x + w / 2, top - 0.030 - i * step, ln, color=MUT, fontsize=ss,
+                ha="center", va="center")
 
 
 # fluxo base

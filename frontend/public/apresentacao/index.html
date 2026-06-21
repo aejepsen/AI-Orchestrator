@@ -263,7 +263,7 @@
   → microserviços com as regras → síntese. Progresso transmitido por SSE em tempo real
   (<code>route</code> · <code>agent</code> · <code>final</code>).</p>
   <figure>
-    <img src="architecture-flow.png?v=20260621" alt="Fluxo completo do AI-Orchestrator">
+    <img src="architecture-flow.png?v=20260621b" alt="Fluxo completo do AI-Orchestrator">
     <figcaption>Arquitetura end-to-end em produção. Inferência local via Ollama — nenhum dado sai do perímetro.</figcaption>
   </figure>
 </section>
@@ -278,7 +278,7 @@
   Pergunta já conhecida resolve em ~0,1&nbsp;s por similaridade vetorial, sem chamar o LLM.
   Fora de escopo? O grafo pede esclarecimento em vez de alucinar.</p>
   <figure>
-    <img src="langgraph-flow.png?v=20260621" alt="Grafo LangGraph do gateway">
+    <img src="langgraph-flow.png?v=20260621b" alt="Grafo LangGraph do gateway">
     <figcaption>StateGraph do gateway (gateway/graph.py) — cada transição é observável e testada.</figcaption>
   </figure>
 </section>
@@ -292,7 +292,7 @@
   (alçadas, CLT, reposição, descontos). O LLM consulta e executa; quem valida é o serviço.
   Erro 422 volta estruturado com a regra violada e reentra no loop do agente.</p>
   <figure>
-    <img src="microservices.png?v=20260621" alt="Mapa dos microserviços de domínio">
+    <img src="microservices.png?v=20260621b" alt="Mapa dos microserviços de domínio">
     <figcaption>Gateway descobre as capacidades de cada serviço via OpenAPI — adicionar um domínio novo não muda o orquestrador.</figcaption>
   </figure>
 </section>
@@ -306,10 +306,10 @@
   Loop limitado (≤ 6 iterações + deadline) e toda afirmação numérica obrigatoriamente
   rastreável a uma chamada de tool.</p>
   <div class="grid2">
-    <figure style="margin-top:0"><img src="agent-financas.png?v=20260621" alt="Agente Finanças"></figure>
-    <figure style="margin-top:0"><img src="agent-rh.png?v=20260621" alt="Agente RH"></figure>
-    <figure style="margin-top:0"><img src="agent-estoque.png?v=20260621" alt="Agente Estoque"></figure>
-    <figure style="margin-top:0"><img src="agent-vendas.png?v=20260621" alt="Agente Vendas"></figure>
+    <figure style="margin-top:0"><img src="agent-financas.png?v=20260621b" alt="Agente Finanças"></figure>
+    <figure style="margin-top:0"><img src="agent-rh.png?v=20260621b" alt="Agente RH"></figure>
+    <figure style="margin-top:0"><img src="agent-estoque.png?v=20260621b" alt="Agente Estoque"></figure>
+    <figure style="margin-top:0"><img src="agent-vendas.png?v=20260621b" alt="Agente Vendas"></figure>
   </div>
 </section>
 
@@ -506,7 +506,7 @@
   mapeada no grafo. Três camadas opt-in que degradam graceful: enriquecer a query com contexto,
   expandir relações em um grafo de conhecimento e re-ranquear a rota semântica.</p>
   <figure>
-    <img src="semiose-flow.png?v=20260621" alt="Pipeline Semiose — Camadas A/B/C">
+    <img src="semiose-flow.png?v=20260621b" alt="Pipeline Semiose — Camadas A/B/C">
     <figcaption>Camada A (enrich) · Camada B (Knowledge Graph em Neo4j, tool virtual) · Camada C (re-rank com cross-encoder) — cada uma controlada por flag.</figcaption>
   </figure>
   <div class="grid3">

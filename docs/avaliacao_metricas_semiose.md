@@ -27,7 +27,7 @@ Captura o caso mais perigoso: enricher **ativo mas prejudicial**. Drift Score me
 
 **Graph Expansion Utility (GEU)** — métrica correta e prática. Mede utilidade real (informação apareceu na resposta). GEU < 0.5 = tool gera ruído — concordo.
 
-**Relation Precision@5** — boa, mas precisa de golden de relações. Derivável do seed script (relações conhecidas). Target ≥ 0.80 adequado.
+**Relation Validity@5** — implementada como _non-garbage rate_: fração das relações retornadas (top-5 por chamada) cujo domínio pertence ao conjunto conhecido (`estoque`, `vendas`, `financas`, `rh`). Não é precisão contra um golden de relações (um golden derivado do seed script é trabalho futuro). Target ≥ 0.80 adequado para o proxy de validade.
 
 **Métrica ausente — Graph Latency Budget:**
 
@@ -61,9 +61,9 @@ O boost `min(score + 0.05, 1.0)` é conservador por design. Mas quando ele muda 
 
 ### End-to-end
 
-**F1-Score Micro (routing) +3pp** — target mínimo razoável. Baseline já deve estar alto (semantic router + lexical fallback). 3pp sobre baseline alto é significativo.
+**Exact-Match Routing (+3pp)** — igualdade exata do conjunto de domínios previstos vs. esperados (não micro-F1 sobre labels individuais; nomeado assim para refletir o cálculo real). Target mínimo razoável. Baseline já deve estar alto (semantic router + lexical fallback); 3pp sobre baseline alto é significativo.
 
-**Semantic Preservation (BERTScore Δ > 0)** — correto como sanity check. Se Δ < 0, Semiose está piorando respostas. Mas BERTScore é caro em CPU. Rodar em batch offline, não inline.
+**Enrichment Cosine Preservation** — cosseno SBERT entre query original e enriquecida (não BERTScore token-level; nomeado assim para refletir a implementação). É o complemento do Contextual Drift Score (preservation ≈ 1 − drift). Sanity check: valor baixo indica que o enriquecimento distorce o significado. BERTScore real fica como trabalho futuro (caro em CPU, rodar offline em batch).
 
 **Métrica ausente — Topic Switch Accuracy:**
 
@@ -83,13 +83,13 @@ TSA = queries com mudança de domínio onde enricher corretamente NÃO propagou 
 | A | **False Enrichment Rate** | — | < 0.05 | **Crítica** |
 | A | **Topic Switch Accuracy** | — | ≥ 0.95 | **Crítica** |
 | B | Graph Expansion Utility | 0.0 | ≥ 0.60 | Alta |
-| B | Relation Precision@5 | — | ≥ 0.80 | Média |
+| B | Relation Validity@5 | — | ≥ 0.80 | Média |
 | B | **Cross-Domain Resolution Rate** | — | ≥ 0.40 | Alta |
 | B | **Graph Latency Budget** | 1.0 | < 1.30 | Média |
 | C | Contextual Gain Ratio | 0.0 | ≥ 0.30 | Alta |
 | C | **Boost Precision** | — | ≥ 0.90 | Alta |
-| E2E | F1-Score Micro (routing) | Baseline eval | +3pp | Alta |
-| E2E | Semantic Preservation | 0 | Δ > 0 | Média |
+| E2E | Exact-Match Routing | Baseline eval | +3pp | Alta |
+| E2E | Enrichment Cosine Preservation | 0 | alto (≈1−drift) | Média |
 
 ## Observações arquiteturais
 
@@ -97,6 +97,6 @@ TSA = queries com mudança de domínio onde enricher corretamente NÃO propagou 
 
 2. **Golden set multi-turn**: Falta. O `golden_routing.jsonl` atual é single-turn. Para Entity Propagation F1, TSA e CGR, precisa de pares `(turno_anterior, turno_atual, domínio_esperado, entidades_esperadas)`. Proposta: criar `golden_semiose.jsonl` com ~30 pares.
 
-3. **Ordem de implementação das métricas**: FER e TSA primeiro (detectam danos). Depois CGR e GEU (medem valor). Por último BERTScore (caro, sanity check).
+3. **Ordem de implementação das métricas**: FER e TSA primeiro (detectam danos). Depois CGR e GEU (medem valor). Por último Enrichment Cosine Preservation (sanity check; BERTScore real fica para depois).
 
 4. **LLM-as-a-Judge**: Proposta no texto original é válida mas cara (requer SOTA externo). Para PoC, CGR + FER + TSA cobrem o mesmo ground de forma determinística e reprodutível. Reservar LLM-as-Judge para validação pré-produção.

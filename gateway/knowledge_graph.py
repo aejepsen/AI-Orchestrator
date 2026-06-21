@@ -70,7 +70,7 @@ MATCH (e:Entity)
 WHERE (e.name = $entity_name OR e.sku = $entity_name) AND e.type = $entity_type
 WITH e
 MATCH (e)-[r*1..2]-(related:Entity)
-WHERE ($target_domain = '' OR related.domain = $target_domain)
+WHERE related <> e AND ($target_domain = '' OR related.domain = $target_domain)
 WITH DISTINCT related, [rel IN r | type(rel)] AS path_types
 RETURN related.name AS name,
        related.type AS type,

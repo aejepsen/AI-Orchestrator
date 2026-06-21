@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -37,11 +38,26 @@ COLLECTION = "routing_examples"
 # não resgata matches ruins. Cap em 1.0 preserva semântica de cosseno.
 CONTEXT_BOOST = 0.05
 
+# Semiose — Camada C Nível 2 (S3): modelo cross-encoder padrão (multilíngue).
+DEFAULT_CROSS_ENCODER = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+
 
 def _point_id(question: str) -> str:
     """ID determinístico (UUID derivado do hash) — upsert idempotente."""
     digest = hashlib.sha256(question.encode("utf-8")).hexdigest()
     return f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
+
+
+def _contextual_text(question: str, domains: list[str]) -> str:
+    """Semiose — Camada A+ (S1): situa o exemplo no seu domínio antes de embedar.
+
+    Espelha Contextual Embeddings (Anthropic, 2024): anexar o contexto que dá
+    sentido ao trecho reduz falhas de recuperação. Aplicado só no corpus (índice),
+    não na query — assimetria intencional, como na técnica original.
+    """
+    if not domains:
+        return question
+    return f"[domínio: {', '.join(domains)}] {question}"
 
 
 class SemanticRouter:
@@ -56,6 +72,11 @@ class SemanticRouter:
         threshold: float = 0.80,
         top_k: int = 5,
         min_score_gap: float = 0.05,
+        context_boost: float = CONTEXT_BOOST,
+        contextual_embeddings: bool = False,
+        rerank_cross_encoder: bool = False,
+        cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
+        cross_encoder: Any = None,
         client: httpx.Client | None = None,
         api_key: str | None = None,
     ) -> None:
@@ -65,6 +86,13 @@ class SemanticRouter:
         self._threshold = threshold
         self._top_k = top_k
         self._min_score_gap = min_score_gap
+        self._context_boost = context_boost
+        self._contextual_embeddings = contextual_embeddings
+        self._rerank_cross_encoder = rerank_cross_encoder
+        self._cross_encoder_model = cross_encoder_model
+        # Cross-encoder injetável (testes) ou lazy-load. _ce_loaded evita reimport em falha.
+        self._cross_encoder = cross_encoder
+        self._ce_loaded = cross_encoder is not None
         headers = {"api-key": api_key} if api_key else {}
         self._client = client or httpx.Client(timeout=10.0, headers=headers)
         self._ready = False
@@ -121,7 +149,13 @@ class SemanticRouter:
         ]
         if not records:
             return
-        vectors = self._embedder.embed([r["question"] for r in records])
+        # S1 — Contextual Embeddings: embeda o exemplo prefixado com seu domínio
+        # (quando habilitado), mas mantém a question original no payload e no id.
+        if self._contextual_embeddings:
+            texts = [_contextual_text(r["question"], r["expect_domains"]) for r in records]
+        else:
+            texts = [r["question"] for r in records]
+        vectors = self._embedder.embed(texts)
         points = [
             {
                 "id": _point_id(record["question"]),
@@ -179,13 +213,22 @@ class SemanticRouter:
             for h in hits:
                 h["_raw_score"] = h.get("score", 0.0)
                 if context_domain in h.get("payload", {}).get("domains", []):
-                    h["score"] = min(h["_raw_score"] + CONTEXT_BOOST, 1.0)
+                    h["score"] = min(h["_raw_score"] + self._context_boost, 1.0)
             hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
             if any(h.get("_raw_score") != h.get("score") for h in hits):
                 logger.debug(
                     "semantic_router: context rerank applied (context_domain=%s)",
                     context_domain,
                 )
+
+        # Semiose — Camada C Nível 2 (S3): cross-encoder como desempate.
+        # Só atua no caso ambíguo (top-2 com domínios diferentes e gap pequeno)
+        # que a lógica de consenso rejeitaria. Substitui o "Nível 2 LLM" planejado.
+        # Opt-in e graceful (modelo/lib ausente → cai na lógica normal → None).
+        if self._rerank_cross_encoder and len(hits) >= 2:
+            decided = self._cross_encoder_decide(hits, question)
+            if decided is not None:
+                return decided
 
         confident = [h for h in hits if h.get("score", 0.0) >= self._threshold]
         if not confident or confident[0] is not hits[0]:
@@ -220,5 +263,65 @@ class SemanticRouter:
         return RoutePlan(
             domains=sorted(top_domains),  # type: ignore[arg-type]
             plan=plan_detail,
+            clarification=None,
+        )
+
+    # -- re-ranking cross-encoder (S3, lazy + graceful) ------------------------
+
+    def _ensure_cross_encoder(self) -> Any | None:
+        """Lazy-load do CrossEncoder. Nunca bloqueia se a lib/modelo faltar."""
+        if self._cross_encoder is not None or self._ce_loaded:
+            return self._cross_encoder
+        self._ce_loaded = True
+        try:
+            from sentence_transformers import CrossEncoder
+
+            self._cross_encoder = CrossEncoder(self._cross_encoder_model, device="cpu")
+            logger.info("CrossEncoder carregado: %s", self._cross_encoder_model)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CrossEncoder indisponível (%s) — rerank cross-encoder ignorado", exc)
+            self._cross_encoder = None
+        return self._cross_encoder
+
+    def _cross_encoder_decide(self, hits: list[dict], question: str) -> RoutePlan | None:
+        """Desempata o top-2 ambíguo com cross-encoder; senão devolve None.
+
+        "Ambíguo" = os dois melhores hits têm domínios diferentes e diferença de
+        cosseno < min_score_gap — exatamente o caso que o consenso rejeitaria. Se
+        o cross-encoder resolver com confiança (vencedor acima do threshold),
+        roteia para ele. Em qualquer outra situação devolve None e deixa a lógica
+        normal seguir (clareza, indisponibilidade do modelo, baixa confiança).
+        """
+        a, b = hits[0], hits[1]
+        da = set(a.get("payload", {}).get("domains", []))
+        db = set(b.get("payload", {}).get("domains", []))
+        if not da or da == db:
+            return None
+        if abs(a.get("score", 0.0) - b.get("score", 0.0)) >= self._min_score_gap:
+            return None
+        ce = self._ensure_cross_encoder()
+        if ce is None:
+            return None
+        pairs = [
+            [question, a.get("payload", {}).get("question", "")],
+            [question, b.get("payload", {}).get("question", "")],
+        ]
+        try:
+            sa, sb = ce.predict(pairs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CrossEncoder.predict falhou (%s) — desempate ignorado", exc)
+            return None
+        winner = a if float(sa) >= float(sb) else b
+        if winner.get("score", 0.0) < self._threshold:
+            return None
+        w_domains = set(winner["payload"]["domains"])
+        nearest = winner["payload"]["question"]
+        logger.debug("semantic_router: cross-encoder desempatou para %s", sorted(w_domains))
+        return RoutePlan(
+            domains=sorted(w_domains),  # type: ignore[arg-type]
+            plan=(
+                f'Roteado por desempate cross-encoder (cosseno {winner.get("score", 0.0):.2f}) '
+                f'com "{nearest}".'
+            ),
             clarification=None,
         )

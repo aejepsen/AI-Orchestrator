@@ -11,3 +11,5 @@ Modelfile
 models/
 ebook-llm-on-premise/
 PLANO_SEMIOSE.md
+# Artefatos gerados pelos evals (reproduziveis via eval_semiose.py)
+evals/results/

@@ -11,3 +11,6 @@ torch==2.5.1+cpu
 spacy==3.8.4
 # Semiose — Camada B (Knowledge Graph; lazy import, degrada sem Neo4j)
 neo4j==5.28.1
+# Semiose — Camada C Nível 2 (S3): cross-encoder reranker usa sentence-transformers (já incluído acima)
+# Semiose — avaliação (S6): BERTScore real é opcional; descomente para habilitar em eval_semiose.py
+# bert-score==0.3.13

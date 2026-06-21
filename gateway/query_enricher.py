@@ -26,6 +26,10 @@ from gateway.router import _DOMAIN_KEYWORDS, _normalize
 # Regex de entidades estruturadas (patterns conhecidos dos 4 domínios)
 # ---------------------------------------------------------------------------
 
+# SKU: formato de 3+ partes do seed (ex.: CAD-ERG-001, MON-27P-003). Restritivo
+# por design — evita falsos positivos com siglas genéricas (ex.: "ABC-123").
+# Limitação conhecida: SKUs de 2 partes (ex.: "MON-027") NÃO casam; se novos
+# formatos surgirem, ampliar este pattern e atualizar _infer_entity_type no eval.
 _SKU_RE = re.compile(r"\b[A-Z]{2,5}(?:-[A-Z0-9]{2,5})+-\d{2,5}\b")
 _CPF_RE = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b")
 _CNPJ_RE = re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b")

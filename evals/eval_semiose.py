@@ -4,9 +4,16 @@
   A — Enricher:  Entity Propagation F1, Contextual Drift Score,
                  False Enrichment Rate (FER), Topic Switch Accuracy (TSA)
   B — KG:        Graph Expansion Utility (GEU), Cross-Domain Resolution Rate,
-                 Relation Precision@5, Graph Latency Budget
+                 Relation Validity@5, Graph Latency Budget
   C — Re-rank:   Contextual Gain Ratio (CGR), Boost Precision
-  E2E:           F1-Score Micro (routing), Semantic Preservation (BERTScore)
+  E2E:           Exact-Match Routing (set equality), Enrichment Cosine Preservation
+
+Nota de nomenclatura: "Exact-Match Routing" é igualdade de conjunto de domínios
+(não micro-F1 sobre labels). "Enrichment Cosine Preservation" é o cosseno SBERT
+entre query original e enriquecida (não BERTScore token-level); é o complemento
+do Contextual Drift Score (preservation ≈ 1 − drift). "Relation Validity@5" mede
+a fração de relações retornadas que pertencem a um domínio conhecido (não-garbage),
+não precisão contra um golden de relações.
 
 Uso:
     python -m evals.eval_semiose                          # offline (sem LLM/Qdrant)
@@ -52,11 +59,11 @@ GATES = {
     "topic_switch_accuracy": 0.95,
     "contextual_gain_ratio": 0.30,
     "boost_precision": 0.90,
-    "f1_micro_routing": 0.90,
+    "exact_match_routing": 0.90,
     "geu": 0.60,
     "cdrr": 0.40,
     "graph_latency_budget": 1.30,    # máximo (lower is better)
-    "relation_precision_at_5": 0.80,
+    "relation_validity_at_5": 0.80,
 }
 
 
@@ -90,6 +97,37 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if denom == 0:
         return 0.0
     return float(np.dot(va, vb) / denom)
+
+
+def routing_failure_rate(predicted: list[set], expected: list[set]) -> float:
+    """S6 — fração de casos cujo roteamento falhou (conjunto previsto != esperado).
+
+    Conjunto vazio (rota None) conta como falha. Espelha a métrica de "failed
+    retrievals" de Anthropic (2024) para medir o impacto de S1/S3 antes/depois.
+    """
+    if not expected:
+        return 0.0
+    failures = sum(1 for p, e in zip(predicted, expected) if p != e)
+    return failures / len(expected)
+
+
+def _try_bertscore(refs: list[str], hyps: list[str]) -> float | None:
+    """S6 — BERTScore F1 token-level real (lazy import; None se lib ausente).
+
+    Diferente do proxy de cosseno (`enrichment_cosine_preservation`), usa o
+    pacote `bert-score`. Retorna None silenciosamente se não instalado/baixável.
+    """
+    if not refs or not hyps:
+        return None
+    try:
+        from bert_score import score as _bertscore  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        _p, _r, f1 = _bertscore(hyps, refs, lang="pt", verbose=False)
+        return float(f1.mean())
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ── Dataclasses de resultado ─────────────────────────────────────────────
@@ -132,15 +170,17 @@ class SemioseMetrics:
     # Camada B
     geu: float = 0.0
     cdrr: float = 0.0
-    relation_precision_at_5: float = 0.0
+    relation_validity_at_5: float = 0.0
     graph_latency_budget: float = 0.0
     # Camada C
     contextual_gain_ratio: float = 0.0
     boost_precision: float = 0.0
     # E2E
-    f1_micro_routing: float = 0.0
-    f1_micro_routing_no_context: float = 0.0
-    semantic_preservation: float = 0.0
+    exact_match_routing: float = 0.0
+    exact_match_routing_no_context: float = 0.0
+    enrichment_cosine_preservation: float = 0.0
+    enrichment_bertscore: float = 0.0  # S6: BERTScore real (0 se lib ausente)
+    routing_failure_rate: float = 0.0  # S6: 1 - exact_match (com contexto)
     # Meta
     total_cases: int = 0
     cases_enriched: int = 0
@@ -275,6 +315,8 @@ def eval_reranking(
     boost_flips = 0
     boost_correct_flips = 0
     total = 0
+    predicted_with: list[set] = []
+    expected_sets: list[set] = []
 
     for record in records:
         expected = set(record["expect_domains"])
@@ -297,6 +339,9 @@ def eval_reranking(
 
         ok_without = domains_no_ctx == expected
         ok_with = domains_with_ctx == expected
+
+        predicted_with.append(domains_with_ctx)
+        expected_sets.append(expected)
 
         hits_without += ok_without
         hits_with += ok_with
@@ -324,8 +369,9 @@ def eval_reranking(
     return {
         "contextual_gain_ratio": cgr,
         "boost_precision": bp,
-        "f1_micro_routing": acc_with,
-        "f1_micro_routing_no_context": acc_without,
+        "exact_match_routing": acc_with,
+        "exact_match_routing_no_context": acc_without,
+        "routing_failure_rate": routing_failure_rate(predicted_with, expected_sets),
         "boost_flips": boost_flips,
         "boost_correct_flips": boost_correct_flips,
         "total": total,
@@ -381,7 +427,7 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
 
             if related:
                 useful_expansions += 1
-                # Relation precision@5: related entity pertence a domínio conhecido
+                # Relation validity@5: related entity pertence a domínio conhecido
                 # (não garbage). Cross-domain É o propósito do KG.
                 known_domains = {"estoque", "vendas", "financas", "rh"}
                 for r in related[:5]:
@@ -397,22 +443,20 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     cdrr = cross_domain_useful / expand_calls if expand_calls else 0.0
 
     avg_latency_ms = float(np.mean(latencies_ms)) if latencies_ms else 0.0
-    # Latency budget: razão entre latência KG e baseline de enricher (~0.1ms).
-    # Budget ≤ 1.3 significa KG adiciona no máximo 30% de overhead ao enricher.
-    enricher_baseline_ms = 0.1
-    latency_budget = (avg_latency_ms + enricher_baseline_ms) / (enricher_baseline_ms + avg_latency_ms * 0.0) if avg_latency_ms > 0 else 1.0
-    # Ratio of KG call time to budget (100ms — razoável para Neo4j local).
-    latency_budget = avg_latency_ms / 100.0 if avg_latency_ms > 0 else 0.0
+    # Latency budget: razão entre a latência média da chamada KG e o orçamento
+    # alvo de 100ms (Neo4j local). Budget ≤ 1.3 → dentro do envelope aceitável.
+    _LATENCY_TARGET_MS = 100.0
+    latency_budget = avg_latency_ms / _LATENCY_TARGET_MS if avg_latency_ms > 0 else 0.0
 
-    # Precision@5: relevant relations / total relations returned (capped at 5 per call)
+    # Validity@5: relações de domínio conhecido / total retornado (cap 5 por chamada)
     capped_total = min(total_relations_returned, expand_calls * 5)
-    precision_at_5 = relevant_relations / capped_total if capped_total > 0 else 0.0
+    validity_at_5 = relevant_relations / capped_total if capped_total > 0 else 0.0
 
     return {
         "geu": geu,
         "cdrr": cdrr,
         "graph_latency_budget": latency_budget,
-        "relation_precision_at_5": precision_at_5,
+        "relation_validity_at_5": validity_at_5,
         "expand_calls": expand_calls,
         "useful_expansions": useful_expansions,
         "cross_domain_useful": cross_domain_useful,
@@ -420,13 +464,14 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     }
 
 
-# ── E2E: Semantic Preservation (BERTScore) ──────────────────────────────
+# ── E2E: Enrichment Cosine Preservation ─────────────────────────────────
 
 
-def eval_semantic_preservation(cases: list[CaseResult], embedder: Any) -> float:
-    """BERTScore simplificado: cosseno entre query original e enriquecida.
+def eval_enrichment_preservation(cases: list[CaseResult], embedder: Any) -> float:
+    """Cosseno SBERT entre query original e enriquecida (não BERTScore).
 
-    Mede se o enriquecimento preserva o significado (Δ > 0 = bom).
+    Mede se o enriquecimento preserva o significado (perto de 1.0 = bom).
+    É o complemento do Contextual Drift Score (preservation ≈ 1 − drift).
     Usa SBERT embeddings (já disponíveis no pipeline).
     """
     if not embedder:
@@ -487,8 +532,8 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
               f"{_gate_status('geu', metrics.geu)}")
         print(f"  Cross-Domain Res. Rate:    {metrics.cdrr:.4f}  "
               f"{_gate_status('cdrr', metrics.cdrr)}")
-        print(f"  Relation Precision@5:      {metrics.relation_precision_at_5:.4f}  "
-              f"{_gate_status('relation_precision_at_5', metrics.relation_precision_at_5)}")
+        print(f"  Relation Validity@5:       {metrics.relation_validity_at_5:.4f}  "
+              f"{_gate_status('relation_validity_at_5', metrics.relation_validity_at_5)}")
         print(f"  Graph Latency Budget:      {metrics.graph_latency_budget:.4f}x  "
               f"{_gate_status('graph_latency_budget', metrics.graph_latency_budget)}")
     else:
@@ -504,14 +549,17 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
         print("  (Qdrant não disponível — use --semantic para ativar)")
 
     print("\n── End-to-End " + "─" * 58)
-    if metrics.f1_micro_routing > 0:
-        print(f"  F1-Score Micro (routing):  {metrics.f1_micro_routing:.4f}  "
-              f"{_gate_status('f1_micro_routing', metrics.f1_micro_routing)}")
-        print(f"    Sem contexto:            {metrics.f1_micro_routing_no_context:.4f}")
-        delta = metrics.f1_micro_routing - metrics.f1_micro_routing_no_context
+    if metrics.exact_match_routing > 0:
+        print(f"  Exact-Match Routing:       {metrics.exact_match_routing:.4f}  "
+              f"{_gate_status('exact_match_routing', metrics.exact_match_routing)}")
+        print(f"    Sem contexto:            {metrics.exact_match_routing_no_context:.4f}")
+        delta = metrics.exact_match_routing - metrics.exact_match_routing_no_context
         print(f"    Delta:                   {delta:+.4f}")
-    if metrics.semantic_preservation > 0:
-        print(f"  Semantic Preservation:     {metrics.semantic_preservation:.4f}")
+        print(f"  Routing Failure Rate:      {metrics.routing_failure_rate:.4f}")
+    if metrics.enrichment_cosine_preservation > 0:
+        print(f"  Enrichment Cosine Pres.:   {metrics.enrichment_cosine_preservation:.4f}")
+    if metrics.enrichment_bertscore > 0:
+        print(f"  Enrichment BERTScore F1:   {metrics.enrichment_bertscore:.4f}")
 
     # Gate summary
     gates = metrics.check_gates()
@@ -631,8 +679,9 @@ def main() -> int:
         rerank_metrics = eval_reranking(records, semantic, embedder)
         metrics.contextual_gain_ratio = rerank_metrics["contextual_gain_ratio"]
         metrics.boost_precision = rerank_metrics["boost_precision"]
-        metrics.f1_micro_routing = rerank_metrics["f1_micro_routing"]
-        metrics.f1_micro_routing_no_context = rerank_metrics["f1_micro_routing_no_context"]
+        metrics.exact_match_routing = rerank_metrics["exact_match_routing"]
+        metrics.exact_match_routing_no_context = rerank_metrics["exact_match_routing_no_context"]
+        metrics.routing_failure_rate = rerank_metrics["routing_failure_rate"]
 
     # ── Camada B ─────────────────────────────────────────────────────
     if kg:
@@ -640,13 +689,23 @@ def main() -> int:
         kg_metrics = eval_knowledge_graph(records, kg)
         metrics.geu = kg_metrics["geu"]
         metrics.cdrr = kg_metrics["cdrr"]
-        metrics.relation_precision_at_5 = kg_metrics["relation_precision_at_5"]
+        metrics.relation_validity_at_5 = kg_metrics["relation_validity_at_5"]
         metrics.graph_latency_budget = kg_metrics["graph_latency_budget"]
 
-    # ── E2E: Semantic Preservation ───────────────────────────────────
+    # ── E2E: Enrichment Cosine Preservation ──────────────────────────
     if embedder:
-        print("Avaliando Semantic Preservation...")
-        metrics.semantic_preservation = eval_semantic_preservation(cases, embedder)
+        print("Avaliando Enrichment Cosine Preservation...")
+        metrics.enrichment_cosine_preservation = eval_enrichment_preservation(cases, embedder)
+
+    # ── E2E: BERTScore real (S6, opcional — só se bert-score instalado) ──
+    enriched_cases = [c for c in cases if c.got_enriched]
+    if enriched_cases:
+        bs = _try_bertscore(
+            [c.original_query for c in enriched_cases],
+            [c.enriched_query for c in enriched_cases],
+        )
+        if bs is not None:
+            metrics.enrichment_bertscore = bs
 
     # ── Report ───────────────────────────────────────────────────────
     print_report(metrics, cases)

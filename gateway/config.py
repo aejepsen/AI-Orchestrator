@@ -49,6 +49,26 @@ class Settings:
     )
     semantic_threshold: float = field(default_factory=lambda: float(os.environ.get("SEMANTIC_THRESHOLD", "0.92")))
     semantic_top_k: int = field(default_factory=lambda: int(os.environ.get("SEMANTIC_TOP_K", "5")))
+    # Semiose — Camada C: re-ranking contextual. Desabilita com RERANK_ENABLED=0.
+    rerank_enabled: bool = field(
+        default_factory=lambda: os.environ.get("RERANK_ENABLED", "1") not in ("0", "false", "False")
+    )
+    context_boost: float = field(default_factory=lambda: float(os.environ.get("CONTEXT_BOOST", "0.05")))
+    # Semiose — Camada C Nível 2 (S3): cross-encoder reranker (opt-in, lazy via sentence-transformers).
+    # Bi-encoder recupera; cross-encoder reordena top-K (Reimers & Gurevych, 2019; Gao et al., 2023).
+    rerank_cross_encoder_enabled: bool = field(
+        default_factory=lambda: os.environ.get("RERANK_CROSS_ENCODER_ENABLED", "0") not in ("0", "false", "False")
+    )
+    cross_encoder_model: str = field(
+        default_factory=lambda: os.environ.get(
+            "CROSS_ENCODER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+        )
+    )
+    # Semiose — Camada A+ (S1): Contextual Embeddings no índice do router (opt-in).
+    # Prefixa cada exemplo com seu domínio antes de embedar (Anthropic, 2024).
+    contextual_embeddings_enabled: bool = field(
+        default_factory=lambda: os.environ.get("CONTEXTUAL_EMBEDDINGS_ENABLED", "0") not in ("0", "false", "False")
+    )
     routing_examples_path: str = field(
         default_factory=lambda: os.environ.get("ROUTING_EXAMPLES_PATH", "evals/golden_routing.jsonl")
     )

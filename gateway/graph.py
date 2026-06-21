@@ -129,6 +129,10 @@ class GatewayGraph:
                 examples_path=self._settings.routing_examples_path,
                 threshold=self._settings.semantic_threshold,
                 top_k=self._settings.semantic_top_k,
+                context_boost=self._settings.context_boost,
+                contextual_embeddings=self._settings.contextual_embeddings_enabled,
+                rerank_cross_encoder=self._settings.rerank_cross_encoder_enabled,
+                cross_encoder_model=self._settings.cross_encoder_model,
                 api_key=self._settings.qdrant_api_key,
             )
         self._semantic = semantic
@@ -268,8 +272,10 @@ class GatewayGraph:
         trace: TraceHandle | None = getattr(self._local, "trace", None)
         span = trace.span(name="classify") if trace else None
         # Semiose — Camada C: propagar context_domain e enriched para classify_intent.
+        # context_domain só é propagado se o re-ranking contextual estiver habilitado.
         ctx_signals = state.get("_context_signals") or {}
-        context_domain = ctx_signals.get("last_domain")
+        rerank_on = self._settings.rerank_enabled if self._settings else True
+        context_domain = ctx_signals.get("last_domain") if rerank_on else None
         was_enriched = ctx_signals.get("enriched", False)
         route = classify_intent(
             state["sanitized"], self._llm, semantic=self._semantic,

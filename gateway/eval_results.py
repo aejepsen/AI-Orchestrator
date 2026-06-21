@@ -259,10 +259,12 @@ def _extract_models(
     """Agrupa metricas por modelo para comparacao side-by-side."""
     model_data: dict[str, dict[str, Any]] = {}
 
+    # routing_runs vem ordenado do mais recente para o mais antigo (glob reverse):
+    # a 1a ocorrencia de cada modelo e o run mais recente daquele modelo.
     for run in routing_runs:
         model = run.get("model", "unknown")
         if model not in model_data:
-            model_data[model] = {"model": model, "routing_runs": 0, "routing_accuracy_sum": 0.0, "injection_runs": 0, "injection_f1_sum": 0.0}
+            model_data[model] = {"model": model, "routing_runs": 0, "routing_accuracy_sum": 0.0, "last_routing_accuracy": run["accuracy"], "injection_runs": 0, "injection_f1_sum": 0.0}
         model_data[model]["routing_runs"] += 1
         model_data[model]["routing_accuracy_sum"] += run["accuracy"]
 
@@ -275,6 +277,7 @@ def _extract_models(
         entry: dict[str, Any] = {"model": m["model"]}
         if m["routing_runs"] > 0:
             entry["avg_routing_accuracy"] = round(m["routing_accuracy_sum"] / m["routing_runs"], 4)
+            entry["last_routing_accuracy"] = round(m["last_routing_accuracy"], 4)
             entry["routing_runs"] = m["routing_runs"]
         if m["injection_runs"] > 0:
             entry["avg_injection_f1"] = round(m["injection_f1_sum"] / m["injection_runs"], 4)

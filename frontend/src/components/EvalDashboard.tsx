@@ -47,6 +47,7 @@ interface InjectionRun {
 interface ModelComparison {
   model: string;
   avg_routing_accuracy?: number;
+  last_routing_accuracy?: number;
   routing_runs?: number;
   avg_injection_f1?: number;
   injection_runs?: number;
@@ -327,11 +328,22 @@ function ModelComparisonCard({ models }: { models: ModelComparison[] }) {
               {m.model}
             </p>
             <div className="space-y-2">
-              {m.avg_routing_accuracy !== undefined && (
+              {m.last_routing_accuracy !== undefined && (
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted">Routing Accuracy</span>
+                  <span className="text-[11px] text-muted">Routing (ultimo run)</span>
                   <span
                     className="font-semibold text-sm"
+                    style={{ color: scoreColor(m.last_routing_accuracy) }}
+                  >
+                    {pctStr(m.last_routing_accuracy)}
+                  </span>
+                </div>
+              )}
+              {m.avg_routing_accuracy !== undefined && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-muted">Routing (media {m.routing_runs ?? 0} runs)</span>
+                  <span
+                    className="text-xs"
                     style={{ color: scoreColor(m.avg_routing_accuracy) }}
                   >
                     {pctStr(m.avg_routing_accuracy)}

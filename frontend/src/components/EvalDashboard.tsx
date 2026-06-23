@@ -53,6 +53,17 @@ interface ModelComparison {
   injection_runs?: number;
 }
 
+interface SemioseMetric {
+  value: number;
+  gate?: number;
+  passed?: boolean;
+}
+
+interface SemioseLayer {
+  label: string;
+  [metric: string]: SemioseMetric | string | number | null | undefined;
+}
+
 interface EvalData {
   available: boolean;
   stale?: boolean;
@@ -67,6 +78,15 @@ interface EvalData {
     total_blocked: number;
     total_leaked: number;
   };
+  semiose?: {
+    timestamp: string;
+    file: string;
+    modes: Record<string, boolean>;
+    total_cases: number;
+    layer_a: SemioseLayer;
+    layer_b: SemioseLayer;
+    layer_c: SemioseLayer;
+  } | null;
   models: ModelComparison[];
   total_runs: number;
 }
@@ -84,6 +104,52 @@ function scoreColor(v: number): string {
   if (v >= 0.95) return "#34d399";
   if (v >= 0.85) return "#fbbf24";
   return "#f87171";
+}
+
+/* ───────── Semiose metric helpers ───────── */
+
+/** Label legível para cada chave de métrica */
+function metricLabel(key: string): string {
+  const map: Record<string, string> = {
+    entity_propagation_f1: "Entity Propagation F1",
+    entity_propagation_precision: "Precision",
+    entity_propagation_recall: "Recall",
+    false_enrichment_rate: "False Enrichment Rate",
+    topic_switch_accuracy: "Topic Switch Accuracy",
+    contextual_drift_score: "Contextual Drift Score",
+    enrichment_cosine_preservation: "Cosine Preservation",
+    enrichment_bertscore: "BERTScore F1",
+    geu: "Graph Expansion Utility",
+    cdrr: "Cross-Domain Resolution",
+    relation_validity_at_5: "Relation Validity@5",
+    graph_latency_budget: "Graph Latency Budget",
+    contextual_gain_ratio: "Contextual Gain Ratio",
+    boost_precision: "Boost Precision",
+    exact_match_routing: "Exact-Match Routing",
+    exact_match_routing_no_context: "Exact-Match (s/ contexto)",
+    routing_failure_rate: "Routing Failure Rate",
+  };
+  return map[key] || key;
+}
+
+/** Métricas 'lower is better' */
+function lowerIsBetter(key: string): boolean {
+  return ["contextual_drift_score", "false_enrichment_rate", "graph_latency_budget"].includes(key);
+}
+
+/** Formatação do valor: percentual ou ratio */
+function fmtMetricValue(key: string, val: number): string {
+  if (key === "graph_latency_budget") return `${val.toFixed(2)}x`;
+  if (
+    key === "enrichment_bertscore" ||
+    key === "enrichment_cosine_preservation"
+  )
+    return val.toFixed(4);
+  return pctStr(val);
+}
+
+function isMetricActive(m: SemioseMetric | null | undefined): m is SemioseMetric {
+  return m != null && m.value !== 0;
 }
 
 /* ───────── Skeleton ───────── */
@@ -308,6 +374,135 @@ function RunsTable({
   );
 }
 
+/* ───────── Semiose Section ───────── */
+
+function SemioseMiniCard({
+  metric,
+  metricKey,
+}: {
+  metric: SemioseMetric;
+  metricKey: string;
+}) {
+  const gatePassed = metric.passed ?? true;
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-raised/30 px-3 py-1.5">
+      <span className="text-[11px] text-muted">{metricLabel(metricKey)}</span>
+      <span className="flex items-center gap-1.5 ml-2 shrink-0">
+        <span
+          className="text-xs font-semibold tabular-nums"
+          style={{
+            color: lowerIsBetter(metricKey)
+              ? gatePassed ? "#34d399" : "#f87171"
+              : scoreColor(metric.value),
+          }}
+        >
+          {fmtMetricValue(metricKey, metric.value)}
+        </span>
+        {metric.gate != null && (
+          <span
+            className="text-[9px] px-1 py-0.5 rounded font-mono"
+            style={{
+              color: gatePassed ? "#34d399" : "#f87171",
+              background: gatePassed ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+            }}
+          >
+            {gatePassed ? "PASS" : "FAIL"}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function SemioseLayerPanel({
+  layer,
+  metricKeys,
+  color,
+}: {
+  layer: SemioseLayer | undefined;
+  metricKeys: string[];
+  color: string;
+}) {
+  if (!layer) return null;
+  const active = metricKeys.filter((k) => isMetricActive(layer[k] as SemioseMetric | undefined));
+  if (active.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-line/60 bg-surface/40 p-4 backdrop-blur-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ background: color }}
+        />
+        <p className="font-mono text-[10px] tracking-widest text-faint uppercase">
+          {layer.label}
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        {active.map((k) => {
+          const m = layer[k] as SemioseMetric;
+          return <SemioseMiniCard key={k} metric={m} metricKey={k} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SemioseSection({ semiose }: { semiose: NonNullable<EvalData["semiose"]> }) {
+  return (
+    <div className="col-span-full rounded-2xl border border-line bg-surface/40 p-5 backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-4">
+        <p className="font-mono text-[11px] tracking-widest text-faint uppercase">
+          Semiose — Metricas por Camada
+        </p>
+        <div className="flex items-center gap-3 text-[10px] text-muted font-mono">
+          <span>{semiose.total_cases} casos</span>
+          {semiose.modes?.semantic && (
+            <span className="px-1.5 py-0.5 rounded bg-raised/40">Qdrant</span>
+          )}
+          {semiose.modes?.neo4j && (
+            <span className="px-1.5 py-0.5 rounded bg-raised/40">Neo4j</span>
+          )}
+          <span className="text-faint">{semiose.timestamp}</span>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SemioseLayerPanel
+          layer={semiose.layer_a}
+          metricKeys={[
+            "entity_propagation_f1",
+            "false_enrichment_rate",
+            "topic_switch_accuracy",
+            "contextual_drift_score",
+            "enrichment_cosine_preservation",
+          ]}
+          color="#60a5fa"
+        />
+        <SemioseLayerPanel
+          layer={semiose.layer_b}
+          metricKeys={[
+            "geu",
+            "cdrr",
+            "relation_validity_at_5",
+            "graph_latency_budget",
+          ]}
+          color="#34d399"
+        />
+        <SemioseLayerPanel
+          layer={semiose.layer_c}
+          metricKeys={[
+            "contextual_gain_ratio",
+            "boost_precision",
+            "exact_match_routing",
+            "routing_failure_rate",
+          ]}
+          color="#fbbf24"
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ───────── Model Comparison ───────── */
 
 function ModelComparisonCard({ models }: { models: ModelComparison[] }) {
@@ -519,6 +714,9 @@ export function EvalDashboard() {
           {(aggConfusion.tp > 0 || aggConfusion.fn > 0) && (
             <ConfusionMatrixCard matrix={aggConfusion} />
           )}
+
+          {/* Semiose */}
+          {data.semiose && <SemioseSection semiose={data.semiose} />}
 
           {/* Model Comparison */}
           <ModelComparisonCard models={data.models} />

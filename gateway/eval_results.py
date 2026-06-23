@@ -59,8 +59,9 @@ class EvalResultsCollector:
 
         routing_files = sorted(_EVALS_DIR.glob("routing_*.json"), reverse=True)
         injection_files = sorted(_EVALS_DIR.glob("injection_*.json"), reverse=True)
+        semiose_files = sorted(_EVALS_DIR.glob("semiose_*.json"), reverse=True)
 
-        if not routing_files and not injection_files:
+        if not routing_files and not injection_files and not semiose_files:
             return {"available": False}
 
         routing_runs = [_parse_routing(f) for f in routing_files[:_MAX_RUNS]]
@@ -78,11 +79,15 @@ class EvalResultsCollector:
         # Model comparison
         models = _extract_models(routing_runs, injection_runs)
 
+        # Semiose metrics (latest run only — deterministic offline eval)
+        semiose_summary = _parse_semiose(semiose_files[0]) if semiose_files else None
+
         return {
             "available": True,
             "stale": False,
             "routing": routing_summary,
             "injection": injection_summary,
+            "semiose": semiose_summary,
             "models": models,
             "total_runs": len(routing_runs) + len(injection_runs),
         }
@@ -285,3 +290,63 @@ def _extract_models(
         result.append(entry)
 
     return sorted(result, key=lambda x: x.get("avg_routing_accuracy", 0), reverse=True)
+
+
+def _parse_semiose(path: Path) -> dict[str, Any] | None:
+    """Extrai metricas do eval de Semiose mais recente.
+
+    O eval e offline/deterministico — o run mais recente reflete o estado atual
+    do pipeline (harness + KG). Retorna as metricas agrupadas por camada (A/B/C).
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    metrics = data.get("metrics", {})
+    gates = data.get("gates", {})
+    modes = data.get("modes", {})
+
+    def _g(name: str) -> dict[str, Any] | None:
+        if name not in metrics or metrics[name] == 0:
+            return None
+        gate_info = gates.get(name, {})
+        return {
+            "value": round(metrics[name], 4),
+            "gate": gate_info.get("gate"),
+            "passed": gate_info.get("passed"),
+        }
+
+    return {
+        "timestamp": _ts_from_filename(path),
+        "file": path.name,
+        "modes": modes,
+        "total_cases": metrics.get("total_cases", 0),
+        "layer_a": {
+            "label": "Camada A — Enricher",
+            "entity_propagation_f1": _g("entity_propagation_f1"),
+            "entity_propagation_precision": _g("entity_propagation_precision"),
+            "entity_propagation_recall": _g("entity_propagation_recall"),
+            "false_enrichment_rate": _g("false_enrichment_rate"),
+            "topic_switch_accuracy": _g("topic_switch_accuracy"),
+            "contextual_drift_score": _g("contextual_drift_score"),
+            "enrichment_cosine_preservation": _g("enrichment_cosine_preservation"),
+            "enrichment_bertscore": _g("enrichment_bertscore"),
+            "cases_enriched": metrics.get("cases_enriched", 0),
+        },
+        "layer_b": {
+            "label": "Camada B — Knowledge Graph",
+            "geu": _g("geu"),
+            "cdrr": _g("cdrr"),
+            "relation_validity_at_5": _g("relation_validity_at_5"),
+            "graph_latency_budget": _g("graph_latency_budget"),
+        },
+        "layer_c": {
+            "label": "Camada C — Re-ranking",
+            "contextual_gain_ratio": _g("contextual_gain_ratio"),
+            "boost_precision": _g("boost_precision"),
+            "exact_match_routing": _g("exact_match_routing"),
+            "exact_match_routing_no_context": _g("exact_match_routing_no_context"),
+            "routing_failure_rate": _g("routing_failure_rate"),
+        },
+    }

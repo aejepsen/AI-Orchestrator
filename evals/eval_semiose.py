@@ -308,7 +308,9 @@ def eval_reranking(
 ) -> dict:
     """Avalia Camada C: boost aditivo no SemanticRouter.
 
-    Compara roteamento COM vs SEM context_domain (leave-one-out).
+    Compara roteamento COM vs SEM context_domain (leave-one-out), usando
+    busca raw no Qdrant (threshold bypass — mede a qualidade do boost em si,
+    nao o threshold operacional).
     """
     hits_with = 0
     hits_without = 0
@@ -318,41 +320,87 @@ def eval_reranking(
     predicted_with: list[set] = []
     expected_sets: list[set] = []
 
+    # Busca raw no Qdrant (threshold moderado para filtrar ruido, mas baixo
+    # o suficiente para criar cenarios onde boost realmente desempata).
+    try:
+        semantic_router.ensure_ready()
+        client = semantic_router._client
+        qdrant_url = semantic_router._qdrant_url
+        top_k = semantic_router._top_k
+        boost_value = semantic_router._context_boost
+        score_filter = 0.30  # threshold baixo: filtra ruido, mantem ambiguidade
+    except Exception:
+        # Fallback para o metodo original se infraestrutura indisponivel
+        for record in records:
+            expected_sets.append(set(record["expect_domains"]))
+            predicted_with.append(set())
+        return {
+            "contextual_gain_ratio": 0.0,
+            "boost_precision": None,
+            "exact_match_routing": 0.0,
+            "exact_match_routing_no_context": 0.0,
+            "routing_failure_rate": 1.0,
+            "boost_flips": 0,
+            "boost_correct_flips": 0,
+            "total": 0,
+        }
+
     for record in records:
         expected = set(record["expect_domains"])
         context_domain = record["prev_domains"][0] if record.get("prev_domains") else None
+        question = record["question"]
 
-        # Rota SEM contexto
-        route_no_ctx = semantic_router.route(
-            record["question"],
-            exclude_question=record["question"],
-        )
-        domains_no_ctx = set(route_no_ctx.domains) if route_no_ctx else set()
+        # Embed + raw Qdrant search (top_k + 1 p/ leave-one-out)
+        vector = embedder.embed([question])[0]
+        try:
+            response = client.post(
+                f"{qdrant_url}/collections/routing_examples/points/search",
+                json={"vector": vector, "limit": top_k + 2, "with_payload": True},
+            )
+            response.raise_for_status()
+            raw_hits = response.json().get("result", [])
+        except Exception:
+            continue
 
-        # Rota COM contexto
-        route_with_ctx = semantic_router.route(
-            record["question"],
-            exclude_question=record["question"],
-            context_domain=context_domain,
-        )
-        domains_with_ctx = set(route_with_ctx.domains) if route_with_ctx else set()
+        # Leave-one-out: remove a propria pergunta
+        from gateway.semantic_router import _point_id
+        excluded_id = _point_id(question)
+        raw_hits = [h for h in raw_hits if h.get("id") != excluded_id]
+        # Filtra ruido: descarta candidatos com score muito baixo antes de medir boost
+        raw_hits = [h for h in raw_hits if h.get("score", 0) >= score_filter][:top_k]
+        if not raw_hits:
+            continue
 
+        # Top-1 SEM boost
+        domains_no_ctx = set(raw_hits[0].get("payload", {}).get("domains", []))
         ok_without = domains_no_ctx == expected
+        hits_without += ok_without
+        total += 1
+
+        # Aplica boost e reordena
+        boosted = []
+        for h in raw_hits:
+            sc = h.get("score", 0.0)
+            payload = h.get("payload", {})
+            hit_domains = set(payload.get("domains", []))
+            if context_domain and context_domain in hit_domains:
+                sc = min(sc + boost_value, 1.0)
+            boosted.append((sc, hit_domains))
+        boosted.sort(key=lambda x: x[0], reverse=True)
+
+        # Top-1 COM boost
+        domains_with_ctx = boosted[0][1]
         ok_with = domains_with_ctx == expected
+        hits_with += ok_with
 
         predicted_with.append(domains_with_ctx)
         expected_sets.append(expected)
 
-        hits_without += ok_without
-        hits_with += ok_with
-
-        # Boost flipped top-1?
+        # Boost flip?
         if domains_with_ctx != domains_no_ctx:
             boost_flips += 1
             if ok_with:
                 boost_correct_flips += 1
-
-        total += 1
 
     acc_with = hits_with / total if total else 0.0
     acc_without = hits_without / total if total else 0.0
@@ -603,7 +651,7 @@ def main() -> int:
         "--split",
         choices=["dev", "train", "val", "all"],
         default="dev",
-        help="split do dataset: dev (30), train (80), val (40), all (150)",
+        help="split do dataset: dev (30), train (80), val (40), all (170 — inclui adversarial)",
     )
     args = parser.parse_args()
 
@@ -620,6 +668,7 @@ def main() -> int:
             load_golden(Path(args.golden))
             + load_golden(golden_dir / "golden_semiose_train.jsonl")
             + load_golden(golden_dir / "golden_semiose_val.jsonl")
+            + load_golden(golden_dir / "golden_semiose_adversarial.jsonl")
         )
 
     if args.limit:

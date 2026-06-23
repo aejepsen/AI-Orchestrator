@@ -24,7 +24,7 @@ class FakeEmbedder:
     def dim(self) -> int:
         return self._dim
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, prefix_type: str = "document") -> list[list[float]]:
         if self._fail:
             raise LLMError("embedding fora")
         self.embed_calls.append(texts)

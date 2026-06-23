@@ -22,7 +22,11 @@ RUN pip install --no-cache-dir \
     -r /app/gateway/requirements.txt
 
 # Pre-download SBERT model (cached no image, evita download no primeiro request)
+# Pre-download SBERT models (cached no image, evita download no primeiro request)
+# MiniLM — similaridade simétrica, melhor para classificação de domínios
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', cache_folder='/app/models')"
+# E5-large — retrieval assimétrico, disponível via SBERT_MODEL env var
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-large', cache_folder='/app/models')"
 
 # Pre-download spaCy pt_core_news_sm (Semiose Camada A — NER)
 RUN python -m spacy download pt_core_news_sm

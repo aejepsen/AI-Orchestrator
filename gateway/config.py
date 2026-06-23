@@ -53,7 +53,7 @@ class Settings:
     rerank_enabled: bool = field(
         default_factory=lambda: os.environ.get("RERANK_ENABLED", "1") not in ("0", "false", "False")
     )
-    context_boost: float = field(default_factory=lambda: float(os.environ.get("CONTEXT_BOOST", "0.05")))
+    context_boost: float = field(default_factory=lambda: float(os.environ.get("CONTEXT_BOOST", "0.02")))
     # Semiose — Camada C Nível 2 (S3): cross-encoder reranker (opt-in, lazy via sentence-transformers).
     # Bi-encoder recupera; cross-encoder reordena top-K (Reimers & Gurevych, 2019; Gao et al., 2023).
     rerank_cross_encoder_enabled: bool = field(

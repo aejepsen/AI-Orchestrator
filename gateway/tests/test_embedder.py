@@ -19,7 +19,7 @@ class FakeEmbedder:
     def dim(self) -> int:
         return self._dim
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, prefix_type: str = "document") -> list[list[float]]:
         self.calls.append(texts)
         return [[0.1] * self._dim for _ in texts]
 
@@ -34,8 +34,8 @@ def test_fake_embedder_satisfaz_protocol():
 
 def test_sbert_embedder_lazy_load():
     emb = SBERTEmbedder(model_name="test-model", cache_dir="/tmp/models")
-    assert emb.dim == 384
-    assert emb._model is None  # não carregou ainda
+    assert emb._dim == 0   # não carregou ainda — dim é lazy
+    assert emb._model is None
 
 
 def test_sbert_embedder_embed_com_mock():

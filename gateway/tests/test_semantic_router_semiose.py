@@ -25,7 +25,7 @@ class FakeEmbedder:
     def dim(self) -> int:
         return self._dim
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, prefix_type: str = "document") -> list[list[float]]:
         self.embed_calls.append(list(texts))
         return [[0.1] * self._dim for _ in texts]
 

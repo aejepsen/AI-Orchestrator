@@ -155,7 +155,7 @@ class SemanticRouter:
             texts = [_contextual_text(r["question"], r["expect_domains"]) for r in records]
         else:
             texts = [r["question"] for r in records]
-        vectors = self._embedder.embed(texts)
+        vectors = self._embedder.embed(texts, prefix_type="document")
         points = [
             {
                 "id": _point_id(record["question"]),
@@ -191,7 +191,7 @@ class SemanticRouter:
         """
         try:
             self.ensure_ready()
-            vector = self._embedder.embed([question])[0]
+            vector = self._embedder.embed([question], prefix_type="query")[0]
             body: dict = {"vector": vector, "limit": self._top_k + 1, "with_payload": True}
             response = self._client.post(
                 f"{self._qdrant_url}/collections/{COLLECTION}/points/search", json=body
@@ -209,17 +209,24 @@ class SemanticRouter:
 
         # Semiose — Camada C: re-ranking contextual (Nível 1 — Harness).
         # Preserva _raw_score para tracing; boost aditivo com cap em 1.0.
+        # Gap-gated: só aplica boost quando top-1 e top-2 estão próximos
+        # (gap ≤ 0.03 — cenário genuinamente ambíguo onde contexto desempata).
         if context_domain:
-            for h in hits:
-                h["_raw_score"] = h.get("score", 0.0)
-                if context_domain in h.get("payload", {}).get("domains", []):
-                    h["score"] = min(h["_raw_score"] + self._context_boost, 1.0)
-            hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
-            if any(h.get("_raw_score") != h.get("score") for h in hits):
-                logger.debug(
-                    "semantic_router: context rerank applied (context_domain=%s)",
-                    context_domain,
-                )
+            if len(hits) >= 2:
+                gap = hits[0].get("score", 0.0) - hits[1].get("score", 0.0)
+            else:
+                gap = 0.0
+            if gap <= 0.03:
+                for h in hits:
+                    h["_raw_score"] = h.get("score", 0.0)
+                    if context_domain in h.get("payload", {}).get("domains", []):
+                        h["score"] = min(h["_raw_score"] + self._context_boost, 1.0)
+                hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
+                if any(h.get("_raw_score") != h.get("score") for h in hits):
+                    logger.debug(
+                        "semantic_router: context rerank applied (context_domain=%s, gap=%.4f)",
+                        context_domain, gap,
+                    )
 
         # Semiose — Camada C Nível 2 (S3): cross-encoder como desempate.
         # Só atua no caso ambíguo (top-2 com domínios diferentes e gap pequeno)

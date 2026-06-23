@@ -57,11 +57,12 @@ GATES = {
     "contextual_drift_score": 0.12,  # máximo (lower is better); ~10% esperado em follow-ups curtos c/ tag de domínio
     "false_enrichment_rate": 0.05,   # máximo (lower is better)
     "topic_switch_accuracy": 0.95,
-    # Camada C — calibrados para embedder atual (MiniLM 384d, ~57% acurácia
-    # base em queries multi-turn). Upgrade do embedder (e5-large, 1024d)
-    # deve elevar naturalmente ambos os gates. Ver PLANO_SEMIOSE.md §Calibração.
-    "contextual_gain_ratio": -0.02,  # ≥ −0.02 — oscilação negativa leve é ruído do embedder; upgrade deve tornar positivo
-    "boost_precision": 0.30,        # 1/3 dos flips corretos no embedder atual
+    # Camada C — calibrados para MiniLM 384d (~57% acurácia base em queries
+    # multi-turn). E5-large (1024d, assimétrico) foi testado e piorou o
+    # roteamento (~51%) — similaridade simétrica > retrieval para esta tarefa.
+    # Upgrade de embedder deve focar em modelos de similaridade de sentenças.
+    "contextual_gain_ratio": -0.02,  # ≥ −0.02 — oscilação negativa leve é ruído; gate estável p/ MiniLM
+    "boost_precision": 0.30,     # ≥ 0.30 — 1/3 dos flips corretos no MiniLM; gate estável
     "exact_match_routing": 0.90,
     "geu": 0.60,
     "cdrr": 0.40,
@@ -230,7 +231,7 @@ def eval_enricher(records: list[dict], embedder: Any = None) -> tuple[list[CaseR
         # Drift score (se embedder disponível)
         drift = 0.0
         if embedder and was_enriched:
-            vecs = embedder.embed([record["question"], enriched_query])
+            vecs = embedder.embed([record["question"], enriched_query], prefix_type="query")
             drift = 1.0 - _cosine_similarity(vecs[0], vecs[1])
         if was_enriched:
             drift_scores.append(drift)
@@ -354,7 +355,7 @@ def eval_reranking(
         question = record["question"]
 
         # Embed + raw Qdrant search (top_k + 1 p/ leave-one-out)
-        vector = embedder.embed([question])[0]
+        vector = embedder.embed([question], prefix_type="query")[0]
         try:
             response = client.post(
                 f"{qdrant_url}/collections/routing_examples/points/search",
@@ -544,7 +545,7 @@ def eval_enrichment_preservation(cases: list[CaseResult], embedder: Any) -> floa
 
     scores: list[float] = []
     for case in enriched_cases:
-        vecs = embedder.embed([case.original_query, case.enriched_query])
+        vecs = embedder.embed([case.original_query, case.enriched_query], prefix_type="query")
         sim = _cosine_similarity(vecs[0], vecs[1])
         scores.append(sim)
 

@@ -465,6 +465,12 @@ def _seed(session, created_at: str) -> dict[str, int]:  # noqa: ANN001
         )
         counts["relations"] += 1
 
+    # ── Regiões (vendas) — nós para relações cross-domain ────────────────
+    _REGIONS = ["Sudeste", "Sul", "Nordeste", "Centro-Oeste", "Norte"]
+    for reg in _REGIONS:
+        session.run(_MERGE_ENTITY, name=reg, type="regiao", domain="vendas", sku=None, created_at=created_at)
+        counts["entities"] += 1
+
     # ── Vendedores (vendas) ─────────────────────────────────────────────
     for name, region in _SELLERS:
         session.run(
@@ -478,6 +484,14 @@ def _seed(session, created_at: str) -> dict[str, int]:  # noqa: ANN001
             _MERGE_REL % "MESMO_QUE",
             a_name=name, a_type="vendedor", a_domain="vendas",
             b_name=name, b_type="funcionario", b_domain="rh",
+            created_at=created_at,
+        )
+        counts["relations"] += 1
+        # Vendedor → região de atuação
+        session.run(
+            _MERGE_REL % "ATUA_EM",
+            a_name=name, a_type="vendedor", a_domain="vendas",
+            b_name=region, b_type="regiao", b_domain="vendas",
             created_at=created_at,
         )
         counts["relations"] += 1
@@ -594,6 +608,85 @@ def _seed(session, created_at: str) -> dict[str, int]:  # noqa: ANN001
             _MERGE_REL % "ORCAMENTO_DE",
             a_name=name, a_type="orcamento", a_domain="financas",
             b_name=dept, b_type="departamento", b_domain="rh",
+            created_at=created_at,
+        )
+        counts["relations"] += 1
+
+    # ── Cross-domain: estoque → rh (equipamentos alocados a departamentos) ─
+    # Cada departamento recebe equipamentos do estoque para seus funcionários.
+    _DEPT_EQUIPMENT = [
+        ("Engenharia", ["NTB-DEV-004", "MON-27P-003", "TEC-MEC-005"]),
+        ("Vendas", ["NTB-EXE-016", "HEA-BTH-009", "MOU-TRK-026"]),
+        ("Financeiro", ["MON-27P-003", "TEC-ERG-025", "FILT-TEL-028"]),
+        ("RH", ["NTB-EXE-016", "CAM-FHD-008"]),
+        ("Marketing", ["TAB-DIG-017", "SPK-CON-023", "MIC-LAP-024"]),
+        ("Operações", ["SWT-24P-020", "RTR-VPN-021"]),
+        ("Suporte Técnico", ["DOK-USB-027", "SSD-EXT-019", "CAB-HDM-029"]),
+    ]
+    sku_to_name = {sku: name for sku, name, *_ in _PRODUCTS}
+    for dept, skus in _DEPT_EQUIPMENT:
+        for sku in skus:
+            prod_name = sku_to_name[sku]
+            session.run(
+                _MERGE_REL % "ALOCADO_PARA",
+                a_name=prod_name, a_type="produto", a_domain="estoque",
+                b_name=dept, b_type="departamento", b_domain="rh",
+                created_at=created_at,
+            )
+            counts["relations"] += 1
+
+    # ── Cross-domain: vendas → finanças (comissões de vendedores) ─────────
+    # Vendedores geram comissão que vira despesa em finanças.
+    _SELLER_COMMISSIONS = [
+        ("Rafael Monteiro", "Comissão vendas Sudeste Q2", 12_500.00),
+        ("Juliana Castro Neves", "Comissão vendas Sul Q2", 8_200.00),
+        ("Paula Souza", "Comissão vendas Nordeste Q2", 5_400.00),
+        ("Camila Rocha", "Comissão vendas Sudeste Q2", 9_800.00),
+    ]
+    for seller, desc, valor in _SELLER_COMMISSIONS:
+        session.run(
+            "MERGE (d:Entity {name: $name, type: 'despesa', domain: 'financas'}) "
+            "SET d.amount = $valor, d.status = 'aberta', d.categoria = 'Comissão', "
+            "d.created_at = coalesce(d.created_at, $created_at)",
+            name=desc, valor=valor, created_at=created_at,
+        )
+        counts["entities"] += 1
+        session.run(
+            _MERGE_REL % "GERA_COMISSAO",
+            a_name=seller, a_type="vendedor", a_domain="vendas",
+            b_name=desc, b_type="despesa", b_domain="financas",
+            created_at=created_at,
+        )
+        counts["relations"] += 1
+        required = _required_approver(valor)
+        if required is not None:
+            session.run(
+                _MERGE_REL % "REQUER_APROVACAO",
+                a_name=desc, a_type="despesa", a_domain="financas",
+                b_name=required, b_type="cargo", b_domain="rh",
+                created_at=created_at,
+            )
+            counts["relations"] += 1
+
+    # ── Cross-domain: finanças → vendas (campanhas de marketing por região) ──
+    _MARKETING_CAMPAIGNS = [
+        ("Agência Bossa Nova", "Campanha de marketing digital", "Sudeste"),
+        ("Agência Bossa Nova", "Lançamento linha premium", "Sul"),
+    ]
+    for fornecedor, campanha, regiao in _MARKETING_CAMPAIGNS:
+        session.run(_MERGE_ENTITY, name=campanha, type="campanha", domain="financas", sku=None, created_at=created_at)
+        counts["entities"] += 1
+        session.run(
+            _MERGE_REL % "EMITE",
+            a_name=fornecedor, a_type="fornecedor", a_domain="financas",
+            b_name=campanha, b_type="campanha", b_domain="financas",
+            created_at=created_at,
+        )
+        counts["relations"] += 1
+        session.run(
+            _MERGE_REL % "ALVO_REGIAO",
+            a_name=campanha, a_type="campanha", a_domain="financas",
+            b_name=regiao, b_type="regiao", b_domain="vendas",
             created_at=created_at,
         )
         counts["relations"] += 1

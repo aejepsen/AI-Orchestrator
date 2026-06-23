@@ -69,15 +69,18 @@ _EXPAND_CYPHER = """\
 MATCH (e:Entity)
 WHERE (e.name = $entity_name OR e.sku = $entity_name) AND e.type = $entity_type
 WITH e
-MATCH (e)-[r*1..2]-(related:Entity)
-WHERE related <> e AND ($target_domain = '' OR related.domain = $target_domain)
-WITH DISTINCT related, [rel IN r | type(rel)] AS path_types
-RETURN related.name AS name,
-       related.type AS type,
-       related.domain AS domain,
-       path_types
-ORDER BY related.domain, related.name
-LIMIT $limit
+    MATCH (e)-[r*1..3]-(related:Entity)
+    WHERE related <> e AND ($target_domain = '' OR related.domain = $target_domain)
+    WITH related, [rel IN r | type(rel)] AS path_types, e
+    // Prioriza cross-domain: entidades de domínio diferente do nó origem
+    // aparecem primeiro no resultado (push-down no ORDER BY).
+    WITH related, path_types, CASE WHEN related.domain = e.domain THEN 1 ELSE 0 END AS same_domain
+    ORDER BY same_domain ASC, related.domain, related.name
+    RETURN related.name AS name,
+           related.type AS type,
+           related.domain AS domain,
+           path_types
+    LIMIT $limit
 """
 
 # LIMIT adaptativo: mais contexto quando menos domínios.

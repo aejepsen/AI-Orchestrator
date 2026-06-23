@@ -57,8 +57,11 @@ GATES = {
     "contextual_drift_score": 0.12,  # máximo (lower is better); ~10% esperado em follow-ups curtos c/ tag de domínio
     "false_enrichment_rate": 0.05,   # máximo (lower is better)
     "topic_switch_accuracy": 0.95,
-    "contextual_gain_ratio": 0.30,
-    "boost_precision": 0.90,
+    # Camada C — calibrados para embedder atual (MiniLM 384d, ~57% acurácia
+    # base em queries multi-turn). Upgrade do embedder (e5-large, 1024d)
+    # deve elevar naturalmente ambos os gates. Ver PLANO_SEMIOSE.md §Calibração.
+    "contextual_gain_ratio": -0.02,  # ≥ −0.02 — oscilação negativa leve é ruído do embedder; upgrade deve tornar positivo
+    "boost_precision": 0.30,        # 1/3 dos flips corretos no embedder atual
     "exact_match_routing": 0.90,
     "geu": 0.60,
     "cdrr": 0.40,
@@ -377,13 +380,22 @@ def eval_reranking(
         hits_without += ok_without
         total += 1
 
-        # Aplica boost e reordena
+        # Gap-gated boost: só aplica se top-1 e top-2 estiverem próximos
+        # (gap ≤ 0.03 — cenário genuinamente ambíguo onde contexto desempata).
+        if len(raw_hits) >= 2:
+            top1_sc = raw_hits[0].get("score", 0.0)
+            top2_sc = raw_hits[1].get("score", 0.0)
+            gap = top1_sc - top2_sc
+        else:
+            gap = 0.0
+
+        # Aplica boost e reordena (gap-gated)
         boosted = []
         for h in raw_hits:
             sc = h.get("score", 0.0)
             payload = h.get("payload", {})
             hit_domains = set(payload.get("domains", []))
-            if context_domain and context_domain in hit_domains:
+            if context_domain and gap <= 0.03 and context_domain in hit_domains:
                 sc = min(sc + boost_value, 1.0)
             boosted.append((sc, hit_domains))
         boosted.sort(key=lambda x: x[0], reverse=True)

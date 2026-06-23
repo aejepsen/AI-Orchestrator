@@ -391,9 +391,11 @@ function SemioseMiniCard({
         <span
           className="text-xs font-semibold tabular-nums"
           style={{
-            color: lowerIsBetter(metricKey)
-              ? gatePassed ? "#34d399" : "#f87171"
-              : scoreColor(metric.value),
+            color: gatePassed
+              ? "#34d399"
+              : lowerIsBetter(metricKey)
+                ? "#f87171"
+                : scoreColor(metric.value),
           }}
         >
           {fmtMetricValue(metricKey, metric.value)}

@@ -85,6 +85,7 @@ interface EvalData {
     total_cases: number;
     layer_a: SemioseLayer;
     layer_b: SemioseLayer;
+    layer_b_proactive: SemioseLayer;
     layer_c: SemioseLayer;
   } | null;
   models: ModelComparison[];
@@ -117,7 +118,7 @@ function metricLabel(key: string): string {
     false_enrichment_rate: "False Enrichment Rate",
     topic_switch_accuracy: "Topic Switch Accuracy",
     contextual_drift_score: "Contextual Drift Score",
-    enrichment_cosine_preservation: "Cosine Preservation",
+    enrichment_cosine_preservation: "Enrichment Cosine Preservation",
     enrichment_bertscore: "BERTScore F1",
     geu: "Graph Expansion Utility",
     cdrr: "Cross-Domain Resolution",
@@ -127,6 +128,11 @@ function metricLabel(key: string): string {
     boost_precision: "Boost Precision",
     exact_match_routing: "Exact-Match Routing",
     exact_match_routing_no_context: "Exact-Match (s/ contexto)",
+    entity_coverage: "Entity Coverage",
+    graph_freshness: "Graph Freshness",
+    orphan_rate: "Orphan Rate",
+    cross_domain_density: "Cross-Domain Density",
+    domain_entropy: "Domain Entropy",
     routing_failure_rate: "Routing Failure Rate",
   };
   return map[key] || key;
@@ -134,7 +140,7 @@ function metricLabel(key: string): string {
 
 /** Métricas 'lower is better' */
 function lowerIsBetter(key: string): boolean {
-  return ["contextual_drift_score", "false_enrichment_rate", "graph_latency_budget"].includes(key);
+  return ["contextual_drift_score", "false_enrichment_rate", "graph_latency_budget", "orphan_rate"].includes(key);
 }
 
 /** Formatação do valor: percentual ou ratio */
@@ -468,7 +474,7 @@ function SemioseSection({ semiose }: { semiose: NonNullable<EvalData["semiose"]>
           <span className="text-faint">{semiose.timestamp}</span>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SemioseLayerPanel
           layer={semiose.layer_a}
           metricKeys={[
@@ -499,6 +505,17 @@ function SemioseSection({ semiose }: { semiose: NonNullable<EvalData["semiose"]>
             "routing_failure_rate",
           ]}
           color="#fbbf24"
+        />
+        <SemioseLayerPanel
+          layer={semiose.layer_b_proactive}
+          metricKeys={[
+            "entity_coverage",
+            "graph_freshness",
+            "orphan_rate",
+            "cross_domain_density",
+            "domain_entropy",
+          ]}
+          color="#c084fc"
         />
       </div>
     </div>

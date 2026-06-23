@@ -307,10 +307,12 @@ def _parse_semiose(path: Path) -> dict[str, Any] | None:
     gates = data.get("gates", {})
     modes = data.get("modes", {})
 
-    def _g(name: str) -> dict[str, Any] | None:
+    def _g(name: str, raw: bool = False) -> dict[str, Any] | None:
         val = metrics.get(name)
-        if val is None or val == 0:
+        if val is None or (val == 0 and not raw):
             return None
+        if raw:
+            return {"value": val, "gate": None, "passed": None}
         gate_info = gates.get(name, {})
         return {
             "value": round(val, 4),
@@ -341,6 +343,16 @@ def _parse_semiose(path: Path) -> dict[str, Any] | None:
             "cdrr": _g("cdrr"),
             "relation_validity_at_5": _g("relation_validity_at_5"),
             "graph_latency_budget": _g("graph_latency_budget"),
+        },
+        "layer_b_proactive": {
+            "label": "Camada B+ — Graph Health (Proativo)",
+            "entity_coverage": _g("entity_coverage"),
+            "graph_freshness": _g("graph_freshness"),
+            "orphan_rate": _g("orphan_rate"),
+            "cross_domain_density": _g("cross_domain_density"),
+            "domain_entropy": _g("domain_entropy"),
+            "total_nodes": _g("total_nodes", raw=True),
+            "total_edges": _g("total_edges", raw=True),
         },
         "layer_c": {
             "label": "Camada C — Re-ranking",

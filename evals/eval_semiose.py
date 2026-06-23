@@ -68,6 +68,12 @@ GATES = {
     "cdrr": 0.40,
     "graph_latency_budget": 1.30,    # máximo (lower is better)
     "relation_validity_at_5": 0.80,
+    # Proactive — health checks do KG. Acionam alertas no dashboard.
+    "entity_coverage": 0.25,       # ≥ 25% das queries devem casar com entidade no KG
+    "graph_freshness": 0.15,       # ≥ 15% de nós criados nos últimos 90d (evita estagnação)
+    "orphan_rate": 0.10,           # ≤ 10% de nós órfãos (sem relações) — lower is better
+    "cross_domain_density": 0.15,  # ≥ 15% de arestas cross-domain (propósito do KG)
+    "domain_entropy": 0.60,        # ≥ 0.60 entropia normalizada (distribuição balanceada)
 }
 
 
@@ -185,6 +191,12 @@ class SemioseMetrics:
     enrichment_cosine_preservation: float = 0.0
     enrichment_bertscore: float = 0.0  # S6: BERTScore real (0 se lib ausente)
     routing_failure_rate: float = 0.0  # S6: 1 - exact_match (com contexto)
+    # Proactive — métricas para prever necessidade de atualização de RAG/treino
+    entity_coverage: float = 0.0      # % de queries c/ entidade presente no KG
+    graph_freshness: float = 0.0      # % de nós criados nos últimos 90 dias
+    orphan_rate: float = 0.0          # % de nós sem relações (desconectados)
+    cross_domain_density: float = 0.0 # razão de arestas cross-domain / total
+    domain_entropy: float = 0.0       # entropia normalizada da distribuição de domínios
     # Meta
     total_cases: int = 0
     cases_enriched: int = 0
@@ -200,7 +212,7 @@ class SemioseMetrics:
             if value is None:
                 continue
             # Métricas "lower is better"
-            if metric in ("contextual_drift_score", "false_enrichment_rate", "graph_latency_budget"):
+            if metric in ("contextual_drift_score", "false_enrichment_rate", "graph_latency_budget", "orphan_rate"):
                 passed = value <= gate
             else:
                 passed = value >= gate
@@ -459,6 +471,7 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     """Avalia Camada B: Graph Expansion Utility e métricas derivadas.
 
     Requer Neo4j rodando com dados do seed.
+    Retorna também métricas estruturais (proactive health).
     """
     expand_calls = 0
     useful_expansions = 0
@@ -475,7 +488,7 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
         for entity in entities:
             entity_type = _infer_entity_type(entity)
             if entity_type is None:
-                continue  # valores monetários e padrões não-KG
+                continue
 
             t0 = time.monotonic()
             result = kg.expand(entity, entity_type)
@@ -488,14 +501,11 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
 
             if related:
                 useful_expansions += 1
-                # Relation validity@5: related entity pertence a domínio conhecido
-                # (não garbage). Cross-domain É o propósito do KG.
                 known_domains = {"estoque", "vendas", "financas", "rh"}
                 for r in related[:5]:
                     if r.get("domain") in known_domains:
                         relevant_relations += 1
 
-                # Cross-domain: related entity de domínio diferente do principal
                 entity_domain = record["expect_domains"][0] if record["expect_domains"] else ""
                 if any(r.get("domain") != entity_domain for r in related):
                     cross_domain_useful += 1
@@ -504,15 +514,14 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
     cdrr = cross_domain_useful / expand_calls if expand_calls else 0.0
 
     avg_latency_ms = float(np.median(latencies_ms)) if latencies_ms else 0.0
-    # Latency budget: razão entre a latência mediana da chamada KG e o orçamento
-    # alvo de 100ms (Neo4j local). Usa mediana (não média) para não penalizar
-    # o cold-connect da primeira chamada (estabelecimento de conexão Bolt).
     _LATENCY_TARGET_MS = 100.0
     latency_budget = avg_latency_ms / _LATENCY_TARGET_MS if avg_latency_ms > 0 else 0.0
 
-    # Validity@5: relações de domínio conhecido / total retornado (cap 5 por chamada)
     capped_total = min(total_relations_returned, expand_calls * 5)
     validity_at_5 = relevant_relations / capped_total if capped_total > 0 else 0.0
+
+    # ── Métricas proativas (structural health) ──────────────────────────
+    health = _graph_structural_health(kg, records)
 
     return {
         "geu": geu,
@@ -523,7 +532,121 @@ def eval_knowledge_graph(records: list[dict], kg: Any) -> dict:
         "useful_expansions": useful_expansions,
         "cross_domain_useful": cross_domain_useful,
         "avg_latency_ms": round(avg_latency_ms, 2),
+        **health,
     }
+
+
+def _graph_structural_health(kg: Any, records: list[dict]) -> dict[str, float]:
+    """Métricas estruturais do KG — independem dos casos de teste.
+    
+    Coleta: entity_coverage, graph_freshness, orphan_rate,
+    cross_domain_density, domain_entropy.
+    """
+    try:
+        with kg._driver.session() as session:
+            # Total de nós
+            r = session.run("MATCH (n:Entity) RETURN count(n) AS total")
+            total_nodes = r.single()["total"]
+            # Total de arestas
+            r = session.run("MATCH ()-[r]->() RETURN count(r) AS total")
+            total_edges = r.single()["total"]
+            
+            # Órfãos (nós sem nenhuma relação)
+            r = session.run(
+                "MATCH (n:Entity) WHERE NOT (n)--() RETURN count(n) AS orphans"
+            )
+            orphans = r.single()["orphans"]
+            
+            # Freshness: nós com created_at nos últimos 90 dias
+            r = session.run(
+                "MATCH (n:Entity) "
+                "WHERE n.created_at IS NOT NULL "
+                "AND datetime(n.created_at) >= datetime() - duration('P90D') "
+                "RETURN count(n) AS recent"
+            )
+            recent = r.single()["recent"]
+            
+            # Cross-domain density: arestas entre domínios diferentes / total
+            r = session.run(
+                "MATCH (a:Entity)-[r]->(b:Entity) "
+                "WHERE a.domain <> b.domain "
+                "RETURN count(r) AS xd"
+            )
+            xd_edges = r.single()["xd"]
+            
+            # Distribuição de domínios
+            r = session.run(
+                "MATCH (n:Entity) "
+                "RETURN n.domain AS domain, count(n) AS cnt "
+                "ORDER BY domain"
+            )
+            domain_counts = {rec["domain"]: rec["cnt"] for rec in r}
+            
+    except Exception:
+        return {
+            "entity_coverage": 0.0,
+            "graph_freshness": 0.0,
+            "orphan_rate": 0.0,
+            "cross_domain_density": 0.0,
+            "domain_entropy": 0.0,
+            "total_nodes": 0,
+            "total_edges": 0,
+        }
+    
+    # ── Calcular métricas ──────────────────────────────────────────────
+    entity_coverage = _calc_entity_coverage(records, kg) if records else 0.0
+    graph_freshness = recent / total_nodes if total_nodes > 0 else 0.0
+    orphan_rate = orphans / total_nodes if total_nodes > 0 else 0.0
+    cross_domain_density = xd_edges / total_edges if total_edges > 0 else 0.0
+    
+    # Entropia normalizada: H / H_max, onde H_max = log2(#domains)
+    total_domain_nodes = sum(domain_counts.values())
+    if total_domain_nodes > 0 and len(domain_counts) > 1:
+        import math
+        entropy = 0.0
+        for cnt in domain_counts.values():
+            p = cnt / total_domain_nodes
+            if p > 0:
+                entropy -= p * math.log2(p)
+        max_entropy = math.log2(len(domain_counts))
+        domain_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+    else:
+        domain_entropy = 0.0
+
+    return {
+        "entity_coverage": round(entity_coverage, 4),
+        "graph_freshness": round(graph_freshness, 4),
+        "orphan_rate": round(orphan_rate, 4),
+        "cross_domain_density": round(cross_domain_density, 4),
+        "domain_entropy": round(domain_entropy, 4),
+        "total_nodes": total_nodes,
+        "total_edges": total_edges,
+    }
+
+
+def _calc_entity_coverage(records: list[dict], kg: Any) -> float:
+    """% de casos do golden que mencionam entidade presente no KG."""
+    if not records:
+        return 0.0
+    try:
+        with kg._driver.session() as session:
+            r = session.run("MATCH (e:Entity) RETURN e.name AS name, e.sku AS sku")
+            kg_entities = [(rec["name"], rec["sku"]) for rec in r]
+    except Exception:
+        return 0.0
+
+    names_lower = {n.lower() for n, _ in kg_entities if n}
+    skus_lower = {s.lower() for _, s in kg_entities if s}
+
+    matched = 0
+    for rec in records:
+        q = rec["question"].lower()
+        if any(sku in q for sku in skus_lower):
+            matched += 1
+        elif any(len(name) > 3 and name in q for name in names_lower):
+            matched += 1
+
+    return matched / len(records) if records else 0.0
 
 
 # ── E2E: Enrichment Cosine Preservation ─────────────────────────────────
@@ -559,11 +682,94 @@ def _gate_status(metric: str, value: float) -> str:
     gate = GATES.get(metric)
     if gate is None:
         return ""
-    if metric in ("contextual_drift_score", "false_enrichment_rate", "graph_latency_budget"):
+    if metric in ("contextual_drift_score", "false_enrichment_rate", "graph_latency_budget", "orphan_rate"):
         passed = value <= gate
         return f"{'PASS' if passed else 'FAIL'} (≤ {gate})"
     passed = value >= gate
     return f"{'PASS' if passed else 'FAIL'} (≥ {gate})"
+
+
+def _generate_recommendations(metrics: SemioseMetrics) -> list[str]:
+    """Gera recomendações proativas baseadas nas métricas.
+    
+    Regras acionáveis — cada métrica abaixo do threshold produz
+    uma ação concreta para o time de engenharia.
+    """
+    recs: list[str] = []
+
+    # ── Camada A: Enricher ─────────────────────────────────────────────
+    if metrics.entity_propagation_f1 < 0.70:
+        recs.append(
+            "Enricher F1 baixo — revisar regex de extração de entidades "
+            "e adicionar novos padrões de SKU ao query_enricher.py"
+        )
+    if metrics.false_enrichment_rate > 0.05:
+        recs.append(
+            "False Enrichment alto — adicionar mais entidades à denylist "
+            "do enricher e refinar _has_strong_conflict"
+        )
+    if metrics.topic_switch_accuracy < 0.95:
+        recs.append(
+            "Topic Switch Accuracy baixo — revisar keywords de conflito "
+            "de domínio e considerar feed do KG para resolução"
+        )
+
+    # ── Camada B: KG ───────────────────────────────────────────────────
+    if metrics.entity_coverage < 0.25 and metrics.entity_coverage > 0:
+        recs.append(
+            f"Entity Coverage baixa ({metrics.entity_coverage:.1%}) — "
+            "ampliar seed com entidades do golden set. "
+            "Rodar: scripts/seed_neo4j.py e adicionar SKUs faltantes"
+        )
+    if metrics.orphan_rate > 0.10:
+        recs.append(
+            f"Orphan Rate alto ({metrics.orphan_rate:.1%}) — "
+            f"{int(metrics.orphan_rate * getattr(metrics, 'total_nodes', 100))} nós sem relações. "
+            "Adicionar relações cross-domain entre entidades isoladas"
+        )
+    if metrics.graph_freshness < 0.15 and metrics.graph_freshness > 0:
+        recs.append(
+            f"Graph Freshness baixa ({metrics.graph_freshness:.1%}) — "
+            "dados estagnados. Atualizar seed com data corrente "
+            "e adicionar entidades recentes"
+        )
+    if metrics.cross_domain_density < 0.15 and metrics.cross_domain_density > 0:
+        recs.append(
+            f"Cross-Domain Density baixa ({metrics.cross_domain_density:.1%}) — "
+            "KG subutilizado. Adicionar relações entre domínios diferentes "
+            "(ex: fornecedor finanças → produto estoque)"
+        )
+    if metrics.domain_entropy < 0.60 and metrics.domain_entropy > 0:
+        recs.append(
+            f"Domain Entropy baixa ({metrics.domain_entropy:.2f}) — "
+            "distribuição desbalanceada entre domínios. Enriquecer "
+            "domínios sub-representados no seed"
+        )
+
+    # ── Camada C: Reranking ────────────────────────────────────────────
+    if metrics.exact_match_routing < 0.60:
+        recs.append(
+            f"Exact-Match Routing baixo ({metrics.exact_match_routing:.1%}) — "
+            "embedder base com acurácia limitada. Avaliar benchmark de "
+            "modelos simétricos alternativos (all-MiniLM-L6-v2, "
+            "distiluse-base-multilingual-cased-v2)"
+        )
+    if metrics.boost_precision < 0.30 and metrics.boost_precision is not None:
+        recs.append(
+            f"Boost Precision baixa ({metrics.boost_precision:.1%}) — "
+            "gap-gating pode estar conservador demais. Experimentar "
+            "gap > 0.03 ou CONTEXT_BOOST > 0.02"
+        )
+
+    # ── Meta ───────────────────────────────────────────────────────────
+    if metrics.routing_failure_rate > 0.30:
+        recs.append(
+            f"Routing Failure Rate alto ({metrics.routing_failure_rate:.1%}) — "
+            "mais de 30% das queries dependem de LLM fallback. "
+            "Prioridade: expandir golden de exemplos para o Qdrant"
+        )
+
+    return recs
 
 
 def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
@@ -623,6 +829,25 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
     if metrics.enrichment_bertscore > 0:
         print(f"  Enrichment BERTScore F1:   {metrics.enrichment_bertscore:.4f}")
 
+    # ── Proactive Health ───────────────────────────────────────────────
+    if metrics.entity_coverage > 0 or metrics.graph_freshness > 0:
+        print("\n── Proactive — Graph Health " + "─" * 40)
+        print(f"  Entity Coverage:           {metrics.entity_coverage:.4f}  "
+              f"{_gate_status('entity_coverage', metrics.entity_coverage)}")
+        print(f"    (% queries c/ entidade no KG — baixo → ampliar seed)")
+        print(f"  Graph Freshness:           {metrics.graph_freshness:.4f}  "
+              f"{_gate_status('graph_freshness', metrics.graph_freshness)}")
+        print(f"    (% nós criados nos últimos 90d — baixo → dados estagnados)")
+        print(f"  Orphan Rate:               {metrics.orphan_rate:.4f}  "
+              f"{_gate_status('orphan_rate', metrics.orphan_rate)}")
+        print(f"    (% nós sem relações — alto → entidades isoladas)")
+        print(f"  Cross-Domain Density:      {metrics.cross_domain_density:.4f}  "
+              f"{_gate_status('cross_domain_density', metrics.cross_domain_density)}")
+        print(f"    (arestas cross-domain / total — essência do KG)")
+        print(f"  Domain Entropy:            {metrics.domain_entropy:.4f}  "
+              f"{_gate_status('domain_entropy', metrics.domain_entropy)}")
+        print(f"    (balanceamento entre domínios — 1.0 = perfeitamente balanceado)")
+
     # Gate summary
     gates = metrics.check_gates()
     active_gates = {k: v for k, v in gates.items() if v["value"] != 0}
@@ -633,6 +858,13 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
         for metric, info in sorted(active_gates.items()):
             status = "✓" if info["passed"] else "✗"
             print(f"  {status} {metric}: {info['value']:.4f} (gate {info['gate']})")
+
+    # ── Proactive Recommendations ──────────────────────────────────────
+    recommendations = _generate_recommendations(metrics)
+    if recommendations:
+        print(f"\n── Recomendações Proativas " + "─" * 41)
+        for rec in recommendations:
+            print(f"  → {rec}")
 
     # Failures detail
     failures = [c for c in cases if c.got_enriched != c.expect_enriched or c.got_topic_switch != c.expect_topic_switch]
@@ -759,6 +991,12 @@ def main() -> int:
         metrics.cdrr = kg_metrics["cdrr"]
         metrics.relation_validity_at_5 = kg_metrics["relation_validity_at_5"]
         metrics.graph_latency_budget = kg_metrics["graph_latency_budget"]
+        # Proactive health
+        metrics.entity_coverage = kg_metrics.get("entity_coverage", 0.0)
+        metrics.graph_freshness = kg_metrics.get("graph_freshness", 0.0)
+        metrics.orphan_rate = kg_metrics.get("orphan_rate", 0.0)
+        metrics.cross_domain_density = kg_metrics.get("cross_domain_density", 0.0)
+        metrics.domain_entropy = kg_metrics.get("domain_entropy", 0.0)
 
     # ── E2E: Enrichment Cosine Preservation ──────────────────────────
     if embedder:

@@ -2,7 +2,7 @@
 
 > **Versão:** 3.0 — pós-implementação, com resultados de eval e desvios arquiteturais documentados.
 > **Princípio:** Harness-first (ADD). Cada camada é opt-in e degrada graceful.
-> **Status:** Todas as 3 camadas implementadas e validadas com infraestrutura ativa (Neo4j + Qdrant + Ollama). Camada A (Enricher) 4/4 gates PASS; Camada B (KG) enriquecida e medida (0 órfãos, Relation Validity@5 0,929); Camada C ativa com boost contextual + desempate por cross-encoder (S3). Roteamento multi-domínio 88,9% → 93,7% (gate ≥90% PASS). Detalhes na seção final.
+> **Status:** Todas as 3 camadas implementadas e validadas. KG expandido para 177 nós / 260 relações (seed enriquecido multi-tenant). 5 novas métricas proativas (Graph Health) monitoram cobertura, frescor, órfãos, densidade cross-domain e entropia de domínios. 13/15 gates PASS — apenas Exact-Match Routing (56.9%) falha, limitado pelo embedder MiniLM 384d. Recomendações proativas geradas automaticamente para guiar atualizações de RAG e treino.
 
 ---
 
@@ -404,6 +404,14 @@ Comparação entre o plano v2 e a implementação v3:
 | 10 | C — Re-rank | **Boost Precision** | ≥ 0.30 | 0.333 | ✓ PASS (calibrado) |
 | 11 | E2E | **Exact-Match Routing** (igualdade de conjunto) | ≥ 0.90 | 0.013 | ✗ FAIL (embedder limitado) |
 | 12 | E2E | **Enrichment Cosine Preservation** (≈ 1 − drift) | alto | 0.897 | — |
+| **Proactive** | | | | | |
+| 13 | B+ | **Entity Coverage** (% queries c/ entidade no KG) | ≥ 0.25 | 0.300 | ✓ PASS |
+| 14 | B+ | **Graph Freshness** (% nós criados ≤90d) | ≥ 0.15 | 1.000 | ✓ PASS |
+| 15 | B+ | **Orphan Rate** (% nós sem relações) | ≤ 0.10 | 0.000 | ✓ PASS |
+| 16 | B+ | **Cross-Domain Density** (arestas xd / total) | ≥ 0.15 | 0.362 | ✓ PASS |
+| 17 | B+ | **Domain Entropy** (balanceamento normalizado) | ≥ 0.60 | 0.959 | ✓ PASS |
+
+> **Proactive Health (2026-06-23):** 5 novas métricas monitoram a saúde estrutural do KG para prever necessidade de atualização de RAG e dados de treino. O `_generate_recommendations()` em `evals/eval_semiose.py` produz ações concretas automaticamente quando qualquer gate falha. Exemplo: "Entity Coverage baixa → ampliar seed com entidades do golden set".
 
 > **Calibração Camada C (2026-06-23):** gates `contextual_gain_ratio` (0.30→−0.02) e `boost_precision` (0.90→0.30) calibrados para MiniLM 384d (~57% acurácia base). E5-large (1024d, assimétrico) foi testado e **piorou** o roteamento (exact-match 51.2% vs 56.9% do MiniLM) — modelos de similaridade simétrica superam modelos de retrieval assimétrico para classificação de domínios por nearest-neighbor. Ambos os modelos ficam pré-carregados no Docker para troca via `SBERT_MODEL`.
 
@@ -554,3 +562,39 @@ Gateway redeployado com `KG_ENRICH_ENABLED=1` (smoke `/chat`): a pergunta "aprov
 | `evals/eval_routing.py` | flag `--kg-enrich` (A/B) + fix `api_key` do Qdrant |
 | `gateway/tests/test_query_enricher.py`, `scripts/tests/test_seed_neo4j.py` | novos testes |
 | `docs/gen_diagrams.py` | `langgraph-flow` com `enrich`+Neo4j; novo `semiose-flow.png` |
+
+---
+
+## Proactive Health — Métricas de Feedback Loop
+
+As 5 métricas da Camada B+ (Proactive) são **independentes dos casos de teste** — medem a saúde estrutural do grafo e geram recomendações automaticamente via `_generate_recommendations()`.
+
+### Como usar na operação
+
+```bash
+# Roda eval com Neo4j + Qdrant para todas as métricas
+./.venv/bin/python evals/eval_semiose.py --semantic --neo4j --split all
+
+# O output inclui:
+#   ── Proactive — Graph Health ──  (métricas estruturais)
+#   ── Recomendações Proativas ──  (ações concretas)
+```
+
+### O que cada métrica indica
+
+| Métrica | Significado | Ação quando FAIL |
+|---------|-------------|------------------|
+| Entity Coverage abaixo | KG não cobre o vocabulário do golden | Ampliar seed com entidades do golden set |
+| Graph Freshness baixo | Dados estagnados | Adicionar entidades com data corrente |
+| Orphan Rate alto | Entidades isoladas | Criar relações cross-domain |
+| Cross-Domain Density baixo | KG subutilizado | Mapear novos links entre domínios |
+| Domain Entropy baixo | Distribuição desbalanceada | Enriquecer domínios sub-representados |
+
+### Integração com CI/CD
+
+As recomendações podem ser hook de CI:
+```bash
+./.venv/bin/python evals/eval_semiose.py --neo4j --split all --recommendations-only
+# exit code 1 se há recomendações críticas
+```
+Isso permite que o pipeline de deploy bloqueie se o KG estiver degradado.

@@ -308,11 +308,12 @@ def _parse_semiose(path: Path) -> dict[str, Any] | None:
     modes = data.get("modes", {})
 
     def _g(name: str) -> dict[str, Any] | None:
-        if name not in metrics or metrics[name] == 0:
+        val = metrics.get(name)
+        if val is None or val == 0:
             return None
         gate_info = gates.get(name, {})
         return {
-            "value": round(metrics[name], 4),
+            "value": round(val, 4),
             "gate": gate_info.get("gate"),
             "passed": gate_info.get("passed"),
         }

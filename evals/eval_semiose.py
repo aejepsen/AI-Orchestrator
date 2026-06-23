@@ -363,8 +363,8 @@ def eval_reranking(
     else:
         cgr = 0.0
 
-    # Boost Precision
-    bp = boost_correct_flips / boost_flips if boost_flips > 0 else 1.0
+    # Boost Precision — indefinida sem flips (None, não 1.0 — 1.0 implicaria perfeição).
+    bp = boost_correct_flips / boost_flips if boost_flips > 0 else None
 
     return {
         "contextual_gain_ratio": cgr,
@@ -541,7 +541,7 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
         print("  (Neo4j não disponível — use --neo4j para ativar)")
 
     print("\n── Camada C — Re-ranking Contextual " + "─" * 36)
-    if metrics.contextual_gain_ratio > 0 or metrics.boost_precision > 0:
+    if metrics.contextual_gain_ratio > 0 or (metrics.boost_precision is not None and metrics.boost_precision > 0):
         print(f"  Contextual Gain Ratio:     {metrics.contextual_gain_ratio:.4f}  "
               f"{_gate_status('contextual_gain_ratio', metrics.contextual_gain_ratio)}")
         print(f"  Boost Precision:           {metrics.boost_precision:.4f}  "

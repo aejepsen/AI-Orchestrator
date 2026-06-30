@@ -74,6 +74,8 @@ GATES = {
     "orphan_rate": 0.10,           # ≤ 10% de nós órfãos (sem relações) — lower is better
     "cross_domain_density": 0.15,  # ≥ 15% de arestas cross-domain (propósito do KG)
     "domain_entropy": 0.60,        # ≥ 0.60 entropia normalizada (distribuição balanceada)
+    # Sinergia Humano-IA — takeover implícito quando o router pede mais informação
+    "clarification_rate": 0.10,    # ≤ 10% de queries que exigem clarificação (lower is better)
 }
 
 
@@ -197,6 +199,8 @@ class SemioseMetrics:
     orphan_rate: float = 0.0          # % de nós sem relações (desconectados)
     cross_domain_density: float = 0.0 # razão de arestas cross-domain / total
     domain_entropy: float = 0.0       # entropia normalizada da distribuição de domínios
+    # Sinergia Humano-IA
+    clarification_rate: float = 0.0   # % de queries onde o router pediu clarificação
     # Meta
     total_cases: int = 0
     cases_enriched: int = 0

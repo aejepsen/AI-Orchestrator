@@ -84,6 +84,32 @@ class Settings:
     langfuse_host: str = field(default_factory=lambda: os.environ.get("LANGFUSE_HOST", "http://localhost:3100"))
     langfuse_public_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-local"))
     langfuse_secret_key: str = field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-local"))
+    # LangSmith — tracing cloud (ecossistema LangChain oficial).
+    # Desabilita com LANGSMITH_ENABLED=0. Chave gratuita em smith.langchain.com.
+    langsmith_enabled: bool = field(
+        default_factory=lambda: os.environ.get("LANGSMITH_ENABLED", "0") not in ("0", "false", "False")
+    )
+    langsmith_api_key: str = field(default_factory=lambda: os.environ.get("LANGSMITH_API_KEY", ""))
+    langsmith_project: str = field(default_factory=lambda: os.environ.get("LANGSMITH_PROJECT", "ai-orchestrator"))
+    langsmith_otel_enabled: bool = field(
+        default_factory=lambda: os.environ.get("LANGSMITH_OTEL_ENABLED", "0") not in ("0", "false", "False")
+    )
+    # OpenTelemetry — camada padrão de instrumentação (CNCF).
+    # Fan-out para todos os backends via OTel Collector.
+    otel_enabled: bool = field(
+        default_factory=lambda: os.environ.get("OTEL_ENABLED", "0") not in ("0", "false", "False")
+    )
+    otel_service_name: str = field(default_factory=lambda: os.environ.get("OTEL_SERVICE_NAME", "ai-orchestrator"))
+    otel_exporter_endpoint: str = field(
+        default_factory=lambda: os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+    )
+    # Phoenix — evaluation de LLM (Arize, Apache 2.0).
+    # Desabilita com PHOENIX_ENABLED=0. Roda local na porta 6006.
+    phoenix_enabled: bool = field(
+        default_factory=lambda: os.environ.get("PHOENIX_ENABLED", "0") not in ("0", "false", "False")
+    )
+    phoenix_host: str = field(default_factory=lambda: os.environ.get("PHOENIX_HOST", "http://phoenix:6006"))
+    phoenix_project: str = field(default_factory=lambda: os.environ.get("PHOENIX_PROJECT", "ai-orchestrator"))
     # Estado conversacional (multi-turn)
     thread_db_path: str = field(default_factory=lambda: os.environ.get("THREAD_DB_PATH", "/tmp/threads.db"))
     # Injection Detector (BERTimbau fine-tunado). Desabilita com INJECTION_DETECTOR_ENABLED=0.

@@ -21,10 +21,16 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+
+# LangSmith auto-instrumentação — deve vir ANTES de qualquer import do LangGraph.
+# A variável LANGCHAIN_TRACING_V2=true dispara o monkey-patch durante o import.
+if os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() in ("true", "1"):
+    import langsmith  # noqa: F401 — efeito colateral de registro de callbacks
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse

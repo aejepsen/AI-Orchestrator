@@ -212,17 +212,116 @@ _FINANCAS_STRONG_SIGNALS = ("fluxo de caixa", "alcada", "aprovacao", "contas a p
 
 
 def _apply_routing_guards(question: str, plan: RoutePlan) -> RoutePlan:
-    """Correções determinísticas pós-LLM. Comissão é regra de vendas; o RH só
-    permanece na rota se a pergunta tiver sinal próprio de RH — "funcionário"
-    sozinho não basta (modelos pequenos ancoram nessa palavra). Reembolso de
-    funcionário é RH; finanças só entra com sinal financeiro explícito."""
+    """Correções determinísticas pós-classificação.
+
+    Pipeline de duas fases:
+    1. REMOÇÕES — remove falsos positivos do LLM (aplicadas ao output original).
+    2. ADIÇÕES  — adiciona domínios que o LLM consistentemente omite.
+
+    A ordem garante que guard de adição (ex: folha→rh) não seja desfeito
+    por guard de remoção (ex: comissão→remove-rh).
+    """
     normalized = _normalize(question)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  FASE 1: REMOÇÕES  — falsos positivos recorrentes do LLM
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── Comissão de pessoa nomeada → SOMENTE vendas ───────────────────────
+    # O LLM ancora em "funcionário" e adiciona rh; removemos se a pergunta
+    # não tem sinal forte de RH (férias, salário, reembolso etc.)
     if "comissao" in normalized and "rh" in plan.domains:
         if not any(signal in normalized for signal in _RH_STRONG_SIGNALS):
             plan.domains = [d for d in plan.domains if d != "rh"]
+
+    # ── Reembolso sem sinal financeiro explícito → só rh ─────────────────
     if "reembolso" in normalized and "rh" in plan.domains and "financas" in plan.domains:
         if not any(signal in normalized for signal in _FINANCAS_STRONG_SIGNALS):
             plan.domains = [d for d in plan.domains if d != "financas"]
+
+    # ── Fornecedor em contexto puramente financeiro → NÃO é estoque ───────
+    # "conta a pagar para fornecedor", "fornecedor com valor em aberto",
+    # "fornecedores com despesas" → financas, não estoque
+    if "fornecedor" in normalized or "fornecedores" in normalized:
+        _FIN_ONLY_FORN = re.compile(
+            r'\b(?:conta\s+a\s+pagar|valor\s+em\s+aberto|despesas?\s+acima|'
+            r'crie\s+uma\s+conta)',
+            re.IGNORECASE
+        )
+        if _FIN_ONLY_FORN.search(question) and "estoque" in plan.domains:
+            plan.domains = [d for d in plan.domains if d != "estoque"]
+
+    # ── Cliente + desconto → vendas, não estoque ─────────────────────────
+    # "cliente chorando descontinho" é política de desconto, não estoque
+    _DISCOUNT_RE = re.compile(
+        r'\b(?:desconto|descontinho|descontão|abatimento)\b', re.IGNORECASE
+    )
+    if _DISCOUNT_RE.search(question) and "estoque" in plan.domains:
+        plan.domains = [d for d in plan.domains if d != "estoque"]
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  FASE 2: ADIÇÕES  — domínios que o LLM consistentemente omite
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── SKU → estoque ────────────────────────────────────────────────────
+    # Padrão: CAD-ERG-001, MON-32W, STO-N-200, MON-27P, GPU-N-3000, etc.
+    _SKU_RE = re.compile(
+        r'\b[A-Z]{2,4}[-/]?[A-Z0-9]{2,4}[-/]?\d{2,6}\b', re.IGNORECASE
+    )
+    if _SKU_RE.search(question) and "estoque" not in plan.domains:
+        plan.domains.append("estoque")  # type: ignore[arg-type]
+
+    # ── Produto de hardware → estoque ────────────────────────────────────
+    _PRODUCT_RE = re.compile(
+        r'\b(?:monitor(?:es)?|SSD|hd\s+externo|switch(?:es)?|roteador(?:es)?'
+        r'|headset|notebook|laptop|servidor(?:es)?|teclado|mouse)\b',
+        re.IGNORECASE
+    )
+    if _PRODUCT_RE.search(question) and "estoque" not in plan.domains:
+        plan.domains.append("estoque")  # type: ignore[arg-type]
+
+    # ── Fornecedor (não removido pela fase 1) → estoque ─────────────────
+    if ("fornecedor" in normalized or "fornecedores" in normalized):
+        if "estoque" not in plan.domains:
+            plan.domains.append("estoque")  # type: ignore[arg-type]
+
+    # ── Departamento + equipamento/alocado → estoque+rh ──────────────────
+    _DEPT_EQUIP_RE = re.compile(
+        r'(?:departamento|equipe)\s+.*?\b(?:equipamento|alocado|recebeu|'
+        r'monitor|switch|roteador|servidor|headset)\b',
+        re.IGNORECASE
+    )
+    _EQUIP_DEPT_RE = re.compile(
+        r'\b(?:equipamento|monitor|switch|roteador|servidor|headset).*?'
+        r'(?:departamento|equipe|alocado|alocados|recebeu)',
+        re.IGNORECASE
+    )
+    if _DEPT_EQUIP_RE.search(question) or _EQUIP_DEPT_RE.search(question):
+        for d in ("estoque", "rh"):
+            if d not in plan.domains:
+                plan.domains.append(d)  # type: ignore[arg-type]
+
+    # ── Folha de pagamento → rh ──────────────────────────────────────────
+    if "folha" in normalized and "rh" not in plan.domains:
+        plan.domains.append("rh")  # type: ignore[arg-type]
+
+    # ── "Vendedor(es) por região" / "atende quais regiões" → rh ──────────
+    # Apenas quando a pergunta NÃO é puramente vendas (tipo "quem atende região X")
+    _SELLER_REGION_RE = re.compile(
+        r'(?:vendedor(?:es)?|representante|atende)\s+.*?\bregi',
+        re.IGNORECASE
+    )
+    if _SELLER_REGION_RE.search(question):
+        if "rh" not in plan.domains:
+            plan.domains.append("rh")  # type: ignore[arg-type]
+
+    # ── "campanha de marketing" → vendas+financas ────────────────────────
+    if "campanha" in normalized:
+        if "vendas" not in plan.domains:
+            plan.domains.append("vendas")  # type: ignore[arg-type]
+        if "financas" not in plan.domains:
+            plan.domains.append("financas")  # type: ignore[arg-type]
+
     return plan
 
 

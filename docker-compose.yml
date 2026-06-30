@@ -59,10 +59,26 @@ services:
       - INJECTION_THRESHOLD=${INJECTION_THRESHOLD:-0.7}
       - INJECTION_DETECTOR_ENABLED=${INJECTION_DETECTOR_ENABLED:-1}
       # Langfuse: observabilidade LLM (traces, generations, scores).
-      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-http://langfuse:3000}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-pk-lf-local}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-sk-lf-local}
       - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-1}
+      # LangSmith — tracing cloud (ecossistema LangChain oficial).
+      - LANGSMITH_ENABLED=${LANGSMITH_ENABLED:-0}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-ai-orchestrator}
+      - LANGSMITH_OTEL_ENABLED=${LANGSMITH_OTEL_ENABLED:-0}
+      # OpenTelemetry — padrão CNCF para distributed tracing.
+      - OTEL_ENABLED=${OTEL_ENABLED:-0}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-ai-orchestrator}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      # Phoenix — LLM evaluation (Arize, Apache 2.0, roda local).
+      - PHOENIX_ENABLED=${PHOENIX_ENABLED:-0}
+      - PHOENIX_HOST=${PHOENIX_HOST:-http://phoenix:6006}
+      - PHOENIX_PROJECT=${PHOENIX_PROJECT:-ai-orchestrator}
       - THREAD_DB_PATH=/tmp/threads.db
       # Semiose — Camada A: enriquecimento contextual da query.
       - ENRICHER_ENABLED=${ENRICHER_ENABLED:-1}
@@ -254,6 +270,33 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Phoenix — LLM evaluation (Arize, Apache 2.0).
+  #  UI em http://localhost:6006
+  #  ════════════════════════════════════════════════════════════════════════
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: ai-orchestrator-phoenix
+    ports:
+      - "127.0.0.1:6006:6006"
+      - "127.0.0.1:6007:6007"  # gRPC
+    profiles:
+      - observability
+    restart: unless-stopped
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  OpenTelemetry Collector — fan-out para Langfuse + LangSmith + Phoenix.
+  #  Recebe OTLP na porta 4318 (HTTP) e roteia para todos os backends.
+  #  ════════════════════════════════════════════════════════════════════════
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: ai-orchestrator-otel-collector
+    ports:
+      - "127.0.0.1:4318:4318"  # OTLP HTTP
+    profiles:
+      - observability
+    restart: unless-stopped
+
   # Exposição pública via Cloudflare Tunnel (suasalada.com.br).
   # Só sobe com o profile "public": docker compose --profile public up -d
   cloudflared:
@@ -277,3 +320,4 @@ volumes:
   vendas_data:
   langfuse_db_data:
   neo4j_data:
+  phoenix_data:

@@ -73,7 +73,7 @@ class MetricsCollector:
 
     def _fetch_and_aggregate(self) -> dict[str, Any]:
         """Busca traces recentes e agrega métricas."""
-        traces_response = self._langfuse.fetch_traces(limit=200)  # type: ignore[union-attr]
+        traces_response = self._langfuse.fetch_traces(limit=100)  # type: ignore[union-attr]
         traces = traces_response.data if hasattr(traces_response, "data") else []
 
         if not traces:

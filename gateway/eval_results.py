@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from gateway.observability import collect_frameworks
+
 logger = logging.getLogger("gateway")
 
 _CACHE_TTL_S = 60.0
@@ -90,6 +92,7 @@ class EvalResultsCollector:
             "semiose": semiose_summary,
             "models": models,
             "total_runs": len(routing_runs) + len(injection_runs),
+            "frameworks": collect_frameworks(),
         }
 
 
@@ -152,6 +155,43 @@ def _parse_routing(path: Path) -> dict[str, Any] | None:
         "domain_breakdown": domain_breakdown,
         "failed_queries": failed_queries[:10],
         "layer_counts": data.get("layer_counts", {}),
+        "confusion": _build_routing_confusion(items),
+    }
+
+
+ALL_DOMAINS = ["estoque", "financas", "rh", "vendas"]
+
+
+def _build_routing_confusion(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Matriz de confusão por domínio + global a partir dos 153 casos de routing."""
+    per_domain: dict[str, dict[str, int]] = {}
+    for d in ALL_DOMAINS:
+        tp = fp = fn = tn = 0
+        for item in items:
+            exp = set(item.get("expect_domains", []))
+            got = set(item.get("got_domains", []))
+            if d in exp and d in got:
+                tp += 1
+            elif d not in exp and d in got:
+                fp += 1
+            elif d in exp and d not in got:
+                fn += 1
+            else:
+                tn += 1
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        per_domain[d] = {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
+
+    # Global micro-average
+    global_tp = sum(per_domain[d]["tp"] for d in ALL_DOMAINS)
+    global_fp = sum(per_domain[d]["fp"] for d in ALL_DOMAINS)
+    global_fn = sum(per_domain[d]["fn"] for d in ALL_DOMAINS)
+    global_tn = sum(per_domain[d]["tn"] for d in ALL_DOMAINS)
+
+    return {
+        "per_domain": per_domain,
+        "global": {"tp": global_tp, "fp": global_fp, "fn": global_fn, "tn": global_tn},
     }
 
 
@@ -234,10 +274,25 @@ def _aggregate_routing(runs: list[dict[str, Any]]) -> dict[str, Any]:
         for d, s in sorted(merged_domains.items())
     }
 
+    # Aggregate confusion matrix from latest run (the one with most cases)
+    latest_run = runs[0] if runs else {}
+    latest_confusion = latest_run.get("confusion", {})
+    # Also aggregate across all runs (sum tp/fp/fn/tn)
+    agg_confusion = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
+    for r in runs:
+        global_cm = r.get("confusion", {}).get("global", {})
+        if global_cm:
+            agg_confusion["tp"] += global_cm.get("tp", 0)
+            agg_confusion["fp"] += global_cm.get("fp", 0)
+            agg_confusion["fn"] += global_cm.get("fn", 0)
+            agg_confusion["tn"] += global_cm.get("tn", 0)
+
     return {
         "runs": runs,
         "avg_accuracy": round(avg_accuracy, 4),
         "domain_breakdown": domain_agg,
+        "confusion": latest_confusion,
+        "confusion_global": agg_confusion,
     }
 
 

@@ -64,6 +64,44 @@ interface SemioseLayer {
   [metric: string]: SemioseMetric | string | number | null | undefined;
 }
 
+// Observabilidade multi-framework
+
+interface FrameworkMetric {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  lower_is_better: boolean;
+  native: boolean;
+  description: string;
+}
+
+interface FrameworkPillar {
+  label: string;
+  metrics: FrameworkMetric[];
+}
+
+interface FrameworkData {
+  id: string;
+  name: string;
+  vendor: string;
+  license: string;
+  deployment: string;
+  url: string;
+  color: string;
+  icon: string;
+  description: string;
+  active: boolean;
+  status_detail: string;
+  pillars: FrameworkPillar[];
+}
+
+interface FrameworksWrapper {
+  frameworks: FrameworkData[];
+  total_metrics: number;
+  pillars: number;
+}
+
 interface EvalData {
   available: boolean;
   stale?: boolean;
@@ -71,6 +109,11 @@ interface EvalData {
     runs: RoutingRun[];
     avg_accuracy: number;
     domain_breakdown: Record<string, DomainBreakdown>;
+    confusion?: {
+      per_domain: Record<string, ConfusionMatrix>;
+      global: ConfusionMatrix;
+    };
+    confusion_global?: ConfusionMatrix;
   };
   injection: {
     runs: InjectionRun[];
@@ -90,6 +133,7 @@ interface EvalData {
   } | null;
   models: ModelComparison[];
   total_runs: number;
+  frameworks?: FrameworksWrapper;
 }
 
 const TOKEN_KEY = "aio:access-token";
@@ -105,6 +149,33 @@ function scoreColor(v: number): string {
   if (v >= 0.95) return "#34d399";
   if (v >= 0.85) return "#fbbf24";
   return "#f87171";
+}
+
+function pillarColor(pillar: string): string {
+  const map: Record<string, string> = {
+    "Negócio & Financeiro": "#34d399",
+    "Engenharia & Eficiência": "#60a5fa",
+    "Alinhamento & Riscos": "#f59e0b",
+    "Sinergia Humano-IA": "#c084fc",
+  };
+  return map[pillar] || "#64748b";
+}
+
+function fmtMetric(unit: string, val: number, lowerIsBetter: boolean, native: boolean): { text: string; color: string } {
+  let text: string;
+  if (unit === "%") text = `${(val * 100).toFixed(1)}%`;
+  else if (unit === "R$") text = `R$ ${val.toFixed(val >= 100 ? 0 : 4)}`;
+  else if (unit === "s") text = `${val.toFixed(2)}s`;
+  else if (unit === "count") text = val >= 100 ? Math.round(val).toString() : val.toFixed(0);
+  else if (unit === "x") text = `${val.toFixed(2)}x`;
+  else if (unit === "ratio") text = val.toFixed(4);
+  else text = String(val);
+
+  // Color logic
+  let color = native ? "#a5b4fc" : "#64748b"; // native=indigo, non-native=slate
+  if (unit === "%" && val >= 0.90) color = "#34d399";
+  else if (unit === "%" && val < 0.80 && !lowerIsBetter) color = "#f87171";
+  return { text, color };
 }
 
 /* ───────── Semiose metric helpers ───────── */
@@ -288,6 +359,71 @@ function ConfusionMatrixCard({ matrix }: { matrix: ConfusionMatrix }) {
       <div className="mt-3 grid grid-cols-2 gap-2 text-center">
         <p className="text-[10px] text-faint">Predicted Positive</p>
         <p className="text-[10px] text-faint">Predicted Negative</p>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── Per-Domain Confusion ───────── */
+
+interface PerDomainCM {
+  tp: number;
+  fp: number;
+  fn: number;
+  tn: number;
+}
+
+function PerDomainConfusion({ domains }: { domains: Record<string, PerDomainCM> }) {
+  const entries = Object.entries(domains);
+  if (entries.length === 0) return null;
+
+  const colors: Record<string, string> = {
+    estoque: "#f59e0b",
+    financas: "#34d399",
+    rh: "#818cf8",
+    vendas: "#60a5fa",
+  };
+
+  return (
+    <div className="col-span-full rounded-2xl border border-line bg-surface/40 p-5 backdrop-blur-sm">
+      <p className="font-mono text-[11px] tracking-widest text-faint uppercase mb-3">
+        Confusion Matrix por Dominio (153 casos)
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-faint font-mono text-[10px]">
+              <th className="text-left pb-2 pr-4">Dominio</th>
+              <th className="text-center pb-2 px-2 w-14">TP</th>
+              <th className="text-center pb-2 px-2 w-14">FP</th>
+              <th className="text-center pb-2 px-2 w-14">FN</th>
+              <th className="text-center pb-2 px-2 w-14">TN</th>
+              <th className="text-center pb-2 pl-4">F1</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(([domain, cm]) => {
+              const precision = cm.tp / (cm.tp + cm.fp) || 0;
+              const recall = cm.tp / (cm.tp + cm.fn) || 0;
+              const f1 = (2 * precision * recall) / (precision + recall) || 0;
+              const color = colors[domain] || "#64748b";
+              return (
+                <tr key={domain} className="border-t border-line/30">
+                  <td className="py-2 pr-4 font-medium capitalize" style={{ color }}>
+                    {domain}
+                  </td>
+                  <td className="text-center py-2 px-2 text-emerald-300 font-mono">{cm.tp}</td>
+                  <td className="text-center py-2 px-2 text-amber-300 font-mono">{cm.fp}</td>
+                  <td className="text-center py-2 px-2 text-red-300 font-mono">{cm.fn}</td>
+                  <td className="text-center py-2 px-2 text-muted font-mono">{cm.tn}</td>
+                  <td className="text-center py-2 pl-4 font-semibold" style={{ color }}>
+                    {pctStr(f1)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -589,6 +725,119 @@ function ModelComparisonCard({ models }: { models: ModelComparison[] }) {
   );
 }
 
+/* ───────── Framework Dashboard — Métricas por framework ───────── */
+
+const DEPLOYMENT_LABELS: Record<string, string> = {
+  "self-hosted": "Self-hosted (Docker)",
+  cloud: "Cloud (SaaS)",
+};
+
+function FrameworkMetricRow({ metric }: { metric: FrameworkMetric }) {
+  const { text, color } = fmtMetric(metric.unit, metric.value, metric.lower_is_better, metric.native);
+  return (
+    <div
+      className="flex items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-raised/20"
+      title={metric.description}
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        {!metric.native && (
+          <span className="text-[9px] text-faint opacity-50" title="Métrica computada externamente">
+            ◇
+          </span>
+        )}
+        {metric.native && (
+          <span className="text-[9px] text-indigo-400" title="Métrica nativa do framework">
+            ◆
+          </span>
+        )}
+        <span className="truncate text-muted">{metric.label}</span>
+      </div>
+      <span className="ml-2 shrink-0 font-mono font-semibold tabular-nums" style={{ color }}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function FrameworkCard({ fw }: { fw: FrameworkData }) {
+  return (
+    <div
+      className="rounded-2xl border border-line bg-surface/30 p-4 backdrop-blur-sm transition-all duration-300 hover:border-line-strong"
+      style={{ borderLeftColor: fw.active ? fw.color : "transparent", borderLeftWidth: 3 }}
+    >
+      {/* Header */}
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{fw.icon}</span>
+            <h3 className="font-semibold text-sm text-ink">{fw.name}</h3>
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted">{fw.vendor}</p>
+        </div>
+        <span
+          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+          style={{
+            color: fw.active ? "#34d399" : "#fbbf24",
+            background: fw.active ? "rgba(52,211,153,0.1)" : "rgba(251,191,36,0.1)",
+          }}
+        >
+          {fw.active ? "ACTIVE" : "PROVISIONED"}
+        </span>
+      </div>
+
+      {/* Meta */}
+      <div className="mb-3 flex flex-wrap gap-1.5 text-[10px] text-faint">
+        <span className="rounded bg-raised/40 px-1.5 py-0.5">{DEPLOYMENT_LABELS[fw.deployment] || fw.deployment}</span>
+        <span className="rounded bg-raised/40 px-1.5 py-0.5">{fw.license}</span>
+        <span className="rounded bg-raised/40 px-1.5 py-0.5">{fw.url.replace("https://", "").replace("http://", "").split("/")[0]}</span>
+      </div>
+
+      <p className="mb-3 text-[11px] text-muted leading-relaxed">{fw.description}</p>
+      <p className="mb-3 text-[10px] text-faint font-mono">{fw.status_detail}</p>
+
+      {/* Pillars */}
+      {fw.pillars.map((pillar) => (
+        <div key={pillar.label} className="mb-2 last:mb-0">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: pillarColor(pillar.label) }} />
+            <span className="text-[10px] font-medium text-faint uppercase tracking-wider">
+              {pillar.label}
+            </span>
+          </div>
+          <div className="space-y-0.5 pl-3">
+            {pillar.metrics.map((m) => (
+              <FrameworkMetricRow key={m.key} metric={m} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FrameworksSection({ frameworks, totalMetrics }: { frameworks: FrameworkData[]; totalMetrics: number }) {
+  return (
+    <div className="col-span-full">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="font-mono text-[11px] tracking-widest text-faint uppercase">
+            Observabilidade — 4 Frameworks
+          </p>
+          <p className="mt-1 text-[10px] text-muted">
+            {totalMetrics} métricas × {frameworks.length} frameworks = mesmo dado, múltiplas fontes.
+            ◆ nativa  ◇ computada
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {frameworks.map((fw) => (
+          <FrameworkCard key={fw.id} fw={fw} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ───────── Main Component ───────── */
 
 export function EvalDashboard() {
@@ -629,19 +878,12 @@ export function EvalDashboard() {
     };
   }, [fetchData]);
 
-  // Latest injection confusion matrix (aggregate across latest run)
+  // Confusion matrix from latest routing run (153 casos expandidos)
+  const routingConfusion = data?.routing?.confusion?.global;
+  const perDomainConfusion = data?.routing?.confusion?.per_domain;
+
+  // Latest injection run (6 casos)
   const latestInjection = data?.injection?.runs?.[0];
-  const aggConfusion: ConfusionMatrix = data?.injection?.runs
-    ? data.injection.runs.reduce(
-        (acc, r) => ({
-          tp: acc.tp + r.confusion.tp,
-          fp: acc.fp + r.confusion.fp,
-          fn: acc.fn + r.confusion.fn,
-          tn: acc.tn + r.confusion.tn,
-        }),
-        { tp: 0, fp: 0, fn: 0, tn: 0 },
-      )
-    : { tp: 0, fp: 0, fn: 0, tn: 0 };
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
@@ -726,12 +968,22 @@ export function EvalDashboard() {
             />
           )}
 
+          {/* Framework Observability */}
+          {data.frameworks?.frameworks && (
+            <FrameworksSection frameworks={data.frameworks.frameworks} totalMetrics={data.frameworks.total_metrics} />
+          )}
+
           {/* Domain Breakdown */}
           <DomainChart domains={data.routing.domain_breakdown} />
 
-          {/* Confusion Matrix */}
-          {(aggConfusion.tp > 0 || aggConfusion.fn > 0) && (
-            <ConfusionMatrixCard matrix={aggConfusion} />
+          {/* Confusion Matrix — Routing (153 casos) */}
+          {routingConfusion && routingConfusion.tp > 0 && (
+            <ConfusionMatrixCard matrix={routingConfusion} />
+          )}
+
+          {/* Per-Domain Confusion */}
+          {perDomainConfusion && (
+            <PerDomainConfusion domains={perDomainConfusion} />
           )}
 
           {/* Semiose */}

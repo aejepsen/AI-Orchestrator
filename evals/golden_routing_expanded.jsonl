@@ -1,0 +1,90 @@
+{"question": "Qual o saldo em estoque do CAD-ERG-001?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Preciso repor o TEC-MEC-005, está abaixo do ponto.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Liste todos os SKUs da categoria Mobiliário.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Qual é o valor unitário do Monitor 27\" 4K?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quantos notebooks em estoque no depósito de São Paulo?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "O HUB-USB-007 está disponível em Porto Alegre?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quais produtos estão com estoque crítico?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Liste os produtos alocados no Centro de Distribuição RJ.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quanto custa a cadeira de diretor couro legítimo?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Qual o fornecedor da categoria Periféricos?", "expect_domains": ["estoque", "financas"], "expect_clarification": false}
+{"question": "Quem comprou o NTB-DEV-004 no último trimestre?", "expect_domains": ["estoque", "vendas"], "expect_clarification": false}
+{"question": "Preciso saber o custo e o fornecedor do SSD externo 2TB.", "expect_domains": ["estoque", "financas"], "expect_clarification": false}
+{"question": "O Switch 24 portas PoE está alocado para qual departamento?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
+{"question": "Liste os equipamentos alocados para o departamento de Marketing.", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
+{"question": "Qual cliente comprou mais monitores este ano?", "expect_domains": ["estoque", "vendas"], "expect_clarification": false}
+{"question": "Registrar saída do PAP-A4R-032 para o escritório.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Qual o ponto de reposição da mesa de conferência?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Liste todos os acessórios com mais de 40 unidades.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "O projetor multimídia está em qual depósito?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Qual a despesa mensal com aluguel?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Liste todas as contas a pagar com vencimento este mês.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Qual o total gasto com marketing digital no Q2?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quanto foi aprovado no orçamento de Engenharia para Q3?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Liste os fornecedores com despesas acima de R$ 10.000.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Qual a despesa de auditoria externa anual?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quanto já foi gasto do orçamento de Vendas?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Liste as despesas que precisam de aprovação de gerente.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quanto custa o vale alimentação dos funcionários?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Qual comissão o Rafael Monteiro gerou no Q2?", "expect_domains": ["financas", "vendas"], "expect_clarification": false}
+{"question": "O orçamento de RH está estourado?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Liste as campanhas de marketing por região.", "expect_domains": ["financas", "vendas"], "expect_clarification": false}
+{"question": "Quanto a Agência Bossa Nova recebeu este mês?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Qual o saldo a receber da Construtora Nova Era?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Liste as despesas com status 'paga'.", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Qual o fornecedor com maior valor em aberto?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quantos funcionários temos na Engenharia?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Liste os funcionários contratados nos últimos 6 meses.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quem tem habilidade em Python na equipe?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quanto ganha o coordenador de Suporte Técnico?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Liste todos os funcionários com cargo de analista.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Qual departamento tem mais especialistas?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "A Mariana Albuquerque tem AWS como habilidade?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Liste os funcionários que entraram antes de 2024.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Qual estagiário está há menos tempo na empresa?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quem tem habilidade em Docker e Kubernetes?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quanto custa a folha do departamento Comercial?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
+{"question": "Qual cargo tem maior média salarial?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quem aprova despesas acima de R$ 50.000?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
+{"question": "A Larissa Prado trabalha em qual departamento?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Liste os vendedores por região de atuação.", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Qual vendedor atende a região Sul?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Quantos clientes a Camila Rocha atende?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Liste os clientes de grande porte da região Sudeste.", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Qual cliente mais comprou no último trimestre?", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Liste os pedidos da Indústria MetalTech.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "O Felipe Andrade atende quais regiões?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Qual o valor total vendido para a Rede Super Bem?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "O cliente Seguros Confiança está inadimplente?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "Liste os clientes sem pedidos nos últimos 90 dias.", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "A Transportadora Rocha comprou quais produtos?", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Qual a comissão total dos vendedores do Sudeste?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "Quem vendeu para a Universidade Central?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Liste os produtos comprados pela Clínica Bem Viver.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Qual o ticket médio dos clientes do Sul?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Quanto o Banco Horizonte comprou em equipamentos de TI?", "expect_domains": ["vendas", "estoque", "financas"], "expect_clarification": false}
+{"question": "Qual cliente da região Nordeste tem conta a receber?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "O vendedor do Rio Grande do Sul bateu a meta?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "Liste os pedidos com produtos da categoria Eletrônicos.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
+{"question": "Quanto de comissão a Paula Souza gerou este mês?", "expect_domains": ["vendas", "financas", "rh"], "expect_clarification": false}
+{"question": "Quantos switches gerenciáveis estão alocados para Operações?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
+{"question": "Qual departamento tem mais equipamentos de áudio alocados?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
+{"question": "A despesa de limpeza está dentro do orçamento de Operações?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Liste as despesas de comissão que precisam de aprovação.", "expect_domains": ["financas", "vendas", "rh"], "expect_clarification": false}
+{"question": "O departamento de Engenharia recebeu quais monitores?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
+{"question": "Quanto o RH gastou com treinamento no Q2?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
+{"question": "A Beatriz Fonseca tem acesso ao SAP Financeiro?", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Quais fornecedores abastecem a loja de São Paulo?", "expect_domains": ["financas", "estoque"], "expect_clarification": false}
+{"question": "O estoque do MON-32W no RJ cobre os pedidos abertos?", "expect_domains": ["estoque", "vendas"], "expect_clarification": false}
+{"question": "Liste as habilidades da equipe de Suporte Técnico.", "expect_domains": ["rh"], "expect_clarification": false}
+{"question": "Qual a margem de lucro nos pedidos da região Centro-Oeste?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "O valor de R$ 62.000 de consultoria ERP foi aprovado?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Quanto temos em caixa para novos investimentos?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "A Startup Maré Alta tem crédito aprovado?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "Liste os produtos com estoque zerado em todos os depósitos.", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quanto custa manter a equipe de Tecnologia por mês?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
+{"question": "Qual a taxa de ocupação do Depósito Central SP?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Liste os departamentos que estouraram o orçamento.", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "O headset Bluetooth com cancelamento está em promoção?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "Quantos dias para o toner ciano acabar no estoque?", "expect_domains": ["estoque"], "expect_clarification": false}
+{"question": "A região Nordeste tem representante comercial dedicado?", "expect_domains": ["vendas", "rh"], "expect_clarification": false}

@@ -25,6 +25,7 @@ from typing import Any
 
 import httpx
 
+from gateway.bm25 import BM25Index
 from gateway.embedder import Embedder
 from gateway.llm import LLMError
 from gateway.router import RoutePlan
@@ -32,6 +33,10 @@ from gateway.router import RoutePlan
 logger = logging.getLogger(__name__)
 
 COLLECTION = "routing_examples"
+
+# Semiose — S2: constante k da fusão RRF (Cormack et al., 2009). 60 é o valor
+# canônico: amortece a diferença entre ranks altos sem anular o topo.
+RRF_K = 60
 
 # Semiose — Camada C: boost aditivo para re-ranking contextual.
 # Valor calibrado para threshold 0.80-0.92: desempata matches bons,
@@ -77,6 +82,8 @@ class SemanticRouter:
         rerank_cross_encoder: bool = False,
         cross_encoder_model: str = DEFAULT_CROSS_ENCODER,
         cross_encoder: Any = None,
+        hybrid_retrieval: bool = False,
+        rrf_k: int = RRF_K,
         client: httpx.Client | None = None,
         api_key: str | None = None,
     ) -> None:
@@ -93,6 +100,11 @@ class SemanticRouter:
         # Cross-encoder injetável (testes) ou lazy-load. _ce_loaded evita reimport em falha.
         self._cross_encoder = cross_encoder
         self._ce_loaded = cross_encoder is not None
+        # S2 — retrieval híbrido: índice BM25 construído junto do seed do golden.
+        self._hybrid_retrieval = hybrid_retrieval
+        self._rrf_k = rrf_k
+        self._bm25: BM25Index | None = None
+        self._bm25_questions: list[str] = []
         headers = {"api-key": api_key} if api_key else {}
         self._client = client or httpx.Client(timeout=10.0, headers=headers)
         self._ready = False
@@ -155,6 +167,11 @@ class SemanticRouter:
             texts = [_contextual_text(r["question"], r["expect_domains"]) for r in records]
         else:
             texts = [r["question"] for r in records]
+        # S2 — Contextual BM25: mesmo corpus (e mesmo prefixo contextual, quando
+        # habilitado) da metade densa. Índice em memória, nada vai ao Qdrant.
+        if self._hybrid_retrieval:
+            self._bm25 = BM25Index(texts)
+            self._bm25_questions = [r["question"] for r in records]
         vectors = self._embedder.embed(texts, prefix_type="document")
         points = [
             {
@@ -192,7 +209,10 @@ class SemanticRouter:
         try:
             self.ensure_ready()
             vector = self._embedder.embed([question], prefix_type="query")[0]
-            body: dict = {"vector": vector, "limit": self._top_k + 1, "with_payload": True}
+            # S2 — híbrido: pool denso ampliado (2×top_k) para a fusão RRF ter
+            # candidatos a promover/demover antes do corte final em top_k.
+            limit = self._top_k * 2 + 1 if self._bm25 is not None else self._top_k + 1
+            body: dict = {"vector": vector, "limit": limit, "with_payload": True}
             response = self._client.post(
                 f"{self._qdrant_url}/collections/{COLLECTION}/points/search", json=body
             )
@@ -205,6 +225,8 @@ class SemanticRouter:
         if exclude_question is not None:
             excluded = _point_id(exclude_question)
             hits = [h for h in hits if h.get("id") != excluded]
+        if self._bm25 is not None and len(hits) > 1:
+            hits = self._rrf_fuse(question, hits, exclude_question)
         hits = hits[: self._top_k]
 
         # Semiose — Camada C: re-ranking contextual (Nível 1 — Harness).
@@ -272,6 +294,43 @@ class SemanticRouter:
             plan=plan_detail,
             clarification=None,
         )
+
+    # -- retrieval híbrido (S2): fusão RRF denso + BM25 ------------------------
+
+    def _rrf_fuse(self, question: str, hits: list[dict], exclude_question: str | None) -> list[dict]:
+        """Reordena o pool denso por Reciprocal Rank Fusion (denso + BM25).
+
+        Só REORDENA: o cosseno de cada hit é preservado para os gates de
+        aceitação (threshold, score gap, consenso), como no S3 — RRF score é
+        rank-based e não é comparável ao threshold de cosseno. Candidatos
+        apenas-lexicais não entram: sem cosseno, não passariam no gate. O ganho
+        vem da composição do top_k (demover um hit de domínio divergente sem
+        apoio lexical evita o veto do consenso → menos fallback pro LLM).
+        """
+        assert self._bm25 is not None
+        bm25_rank: dict[str, int] = {}
+        for position, doc_index in enumerate(self._bm25.rank(question, limit=len(hits) * 2)):
+            doc_question = self._bm25_questions[doc_index]
+            if doc_question != exclude_question:
+                bm25_rank[doc_question] = len(bm25_rank)
+            if len(bm25_rank) >= len(hits):
+                break
+
+        def fused_score(dense_rank: int, hit: dict) -> float:
+            score = 1.0 / (self._rrf_k + dense_rank + 1)
+            lexical = bm25_rank.get(hit.get("payload", {}).get("question", ""))
+            if lexical is not None:
+                score += 1.0 / (self._rrf_k + lexical + 1)
+            return score
+
+        ranked = sorted(
+            enumerate(hits), key=lambda pair: fused_score(pair[0], pair[1]), reverse=True
+        )
+        for dense_rank, hit in ranked:
+            hit["_rrf_score"] = round(fused_score(dense_rank, hit), 6)
+        if [hit for _, hit in ranked] != hits:
+            logger.debug("semantic_router: RRF reordenou o pool denso (hybrid retrieval)")
+        return [hit for _, hit in ranked]
 
     # -- re-ranking cross-encoder (S3, lazy + graceful) ------------------------
 

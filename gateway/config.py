@@ -69,6 +69,13 @@ class Settings:
     contextual_embeddings_enabled: bool = field(
         default_factory=lambda: os.environ.get("CONTEXTUAL_EMBEDDINGS_ENABLED", "0") not in ("0", "false", "False")
     )
+    # Semiose — S2: retrieval híbrido no router — denso (Qdrant) + BM25 in-process
+    # com fusão RRF (opt-in). Espelha Contextual Embeddings + Contextual BM25
+    # (Anthropic, 2024). Gates de aceite continuam sobre o cosseno.
+    hybrid_retrieval_enabled: bool = field(
+        default_factory=lambda: os.environ.get("HYBRID_RETRIEVAL_ENABLED", "0") not in ("0", "false", "False")
+    )
+    rrf_k: int = field(default_factory=lambda: int(os.environ.get("RRF_K", "60")))
     routing_examples_path: str = field(
         default_factory=lambda: os.environ.get("ROUTING_EXAMPLES_PATH", "evals/golden_routing.jsonl")
     )

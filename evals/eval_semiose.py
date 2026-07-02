@@ -40,11 +40,10 @@ sys.path.insert(0, str(ROOT))
 
 from gateway.config import load_settings  # noqa: E402
 from gateway.query_enricher import (  # noqa: E402
-    ContextSignal,
     enrich_query,
     gather_signals,
 )
-from gateway.router import RoutePlan, _DOMAIN_KEYWORDS, classify_intent  # noqa: E402
+from gateway.router import RoutePlan  # noqa: E402
 
 GOLDEN = ROOT / "evals" / "golden_semiose.jsonl"
 GOLDEN_ROUTING = ROOT / "evals" / "golden_routing.jsonl"
@@ -838,19 +837,19 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
         print("\n── Proactive — Graph Health " + "─" * 40)
         print(f"  Entity Coverage:           {metrics.entity_coverage:.4f}  "
               f"{_gate_status('entity_coverage', metrics.entity_coverage)}")
-        print(f"    (% queries c/ entidade no KG — baixo → ampliar seed)")
+        print("    (% queries c/ entidade no KG — baixo → ampliar seed)")
         print(f"  Graph Freshness:           {metrics.graph_freshness:.4f}  "
               f"{_gate_status('graph_freshness', metrics.graph_freshness)}")
-        print(f"    (% nós criados nos últimos 90d — baixo → dados estagnados)")
+        print("    (% nós criados nos últimos 90d — baixo → dados estagnados)")
         print(f"  Orphan Rate:               {metrics.orphan_rate:.4f}  "
               f"{_gate_status('orphan_rate', metrics.orphan_rate)}")
-        print(f"    (% nós sem relações — alto → entidades isoladas)")
+        print("    (% nós sem relações — alto → entidades isoladas)")
         print(f"  Cross-Domain Density:      {metrics.cross_domain_density:.4f}  "
               f"{_gate_status('cross_domain_density', metrics.cross_domain_density)}")
-        print(f"    (arestas cross-domain / total — essência do KG)")
+        print("    (arestas cross-domain / total — essência do KG)")
         print(f"  Domain Entropy:            {metrics.domain_entropy:.4f}  "
               f"{_gate_status('domain_entropy', metrics.domain_entropy)}")
-        print(f"    (balanceamento entre domínios — 1.0 = perfeitamente balanceado)")
+        print("    (balanceamento entre domínios — 1.0 = perfeitamente balanceado)")
 
     # Gate summary
     gates = metrics.check_gates()
@@ -866,7 +865,7 @@ def print_report(metrics: SemioseMetrics, cases: list[CaseResult]) -> None:
     # ── Proactive Recommendations ──────────────────────────────────────
     recommendations = _generate_recommendations(metrics)
     if recommendations:
-        print(f"\n── Recomendações Proativas " + "─" * 41)
+        print("\n── Recomendações Proativas " + "─" * 41)
         for rec in recommendations:
             print(f"  → {rec}")
 
@@ -949,6 +948,8 @@ def main() -> int:
             contextual_embeddings=settings.contextual_embeddings_enabled,
             rerank_cross_encoder=settings.rerank_cross_encoder_enabled,
             cross_encoder_model=settings.cross_encoder_model,
+            hybrid_retrieval=settings.hybrid_retrieval_enabled,
+            rrf_k=settings.rrf_k,
             api_key=settings.qdrant_api_key,
         )
         semantic.ensure_ready()

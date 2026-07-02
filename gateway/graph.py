@@ -133,6 +133,8 @@ class GatewayGraph:
                 contextual_embeddings=self._settings.contextual_embeddings_enabled,
                 rerank_cross_encoder=self._settings.rerank_cross_encoder_enabled,
                 cross_encoder_model=self._settings.cross_encoder_model,
+                hybrid_retrieval=self._settings.hybrid_retrieval_enabled,
+                rrf_k=self._settings.rrf_k,
                 api_key=self._settings.qdrant_api_key,
             )
         self._semantic = semantic

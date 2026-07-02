@@ -12,7 +12,7 @@
 
 | # | Item | Arquivos-alvo | Esforço | Status |
 |---|------|--------------|---------|--------|
-| S2 | Retrieval híbrido (denso + BM25) com fusão RRF — combo Anthropic "Contextual Embeddings + Contextual BM25" (−67% falhas c/ rerank) | `gateway/semantic_router.py` | Médio | ⏳ Pendente |
+| S2 | Retrieval híbrido (denso + BM25) com fusão RRF — combo Anthropic "Contextual Embeddings + Contextual BM25" | `gateway/bm25.py` + `gateway/semantic_router.py` | Médio | ✅ 2026-07-02 (opt-in, default off — ver nota no PLANO_SEMIOSE) |
 | S5 | Multi-query expansion opt-in (modo LLM, flag `MULTI_QUERY_ENABLED`) | `gateway/query_enricher.py` | Médio (custo LLM) | ⏳ Pendente |
 | S4 | GraphRAG global: comunidades Leiden + resumos pré-gerados, tool `summarize_community` | `scripts/seed_neo4j.py` + nova tool | Alto (experimental) | ⏳ Pendente |
 | — | Re-ranking Nível 2 via LLM (`RERANK_LLM_ENABLED`) | `gateway/semantic_router.py` | — | Marcado como futuro |
@@ -52,7 +52,7 @@ HITL implementado (`interrupt()` no nó `confirm_dispatch`, `POST /chat/{thread_
 ## Sequência recomendada (ROI × esforço)
 
 1. ~~**Quick wins de eval**~~ ✅ **CONCLUÍDO 2026-07-02** — `POST /admin/reset` nos 4 serviços (fora do OpenAPI, X-Internal-Key); response schema anexado à description das tools (`_response_summary` em registry.py); `task_success_rate` + `tools_per_task` (média/P95) no eval_domains; reset automático pré-run (`--no-reset` p/ pular). Bônus: fix de regressão no guard desconto→remove-estoque (`_AVAILABILITY_RE` em router.py) que quebrava 2 testes multi-domínio. 335 testes verdes. **Pendente: rebuild dos containers p/ ativar em prod (combinar horário).**
-2. **S2 retrieval híbrido (BM25+RRF)** — maior evidência de ganho (Anthropic), médio esforço, medível com Routing Failure Rate (S6 já implementado).
+2. ~~**S2 retrieval híbrido (BM25+RRF)**~~ ✅ **CONCLUÍDO 2026-07-02** — `gateway/bm25.py` (Okapi stdlib) + `_rrf_fuse` no SemanticRouter (reordena pool denso 2×top_k; cosseno preservado nos gates); flag `HYBRID_RETRIEVAL_ENABLED` default off. Medição: no threshold 0.92 (prod) camada semântica não dispara em leave-one-out (efeito nulo); na banda 0.80 o híbrido corta falsos aceites (10→8 disparos) e recupera +1.3 pp (69.3%→70.6%), mas banda <0.92 segue pior que fallback LLM → default off; destrava com embedder melhor. Nota completa em PLANO_SEMIOSE.md. **Achado colateral: routing no golden expandido (153 casos) está em 72.5% (gate 90%) — dominado por sub-roteamento multi-domínio; README anuncia 90.5% do golden antigo (63).**
 3. **HITL write-intent** — transforma feature desabilitada em diferencial de demo (governança).
 4. **Faithfulness eval (Phoenix + judge local)** — completa o RAG Triad, forte sinal de portfólio.
 5. **Streaming token-a-token** — UX da síntese; independente dos anteriores.

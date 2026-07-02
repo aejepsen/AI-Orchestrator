@@ -91,6 +91,8 @@ def main() -> int:
             contextual_embeddings=settings.contextual_embeddings_enabled,
             rerank_cross_encoder=settings.rerank_cross_encoder_enabled,
             cross_encoder_model=settings.cross_encoder_model,
+            hybrid_retrieval=settings.hybrid_retrieval_enabled,
+            rrf_k=settings.rrf_k,
             api_key=settings.qdrant_api_key,
         )
         semantic.ensure_ready()

@@ -11,12 +11,14 @@ Resultados (medidos)
 | Gate                             | LoRA 9B (prod)                                                              | Baseline 9B    | Baseline 7b     | Critério       |
 | -------------------------------- | --------------------------------------------------------------------------- | -------------- | --------------- | --------------- |
 | Subagentes por domínio          | **35/40 = 87.5%** (fin 90, rh 90, est 90, ven 80)                    | 87.5%          | 82.5%           | ≥ 80%/domínio |
-| Roteamento (64 perguntas)        | **90.5% PASS** (63 queries)                                           | 95.5%          | 90.5%           | ≥ 90%          |
+| Roteamento (153 perguntas)       | **91.5% PASS** (2026-07-02, golden denso multi-domínio)               | 95.5%¹         | 90.5%¹          | ≥ 90%          |
 | Injection                        | **0/6 vazamentos**                                                    | 0/6            | 0/6             | 0 leaks         |
 | Testes determinísticos          | **182 passando** (regras de negócio + gateway)                       | —              | —               | 100%            |
 | Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in)                       | —              | —               | funcional       |
 
 > **LoRA 9B vs baselines**: domains +5 pp vs 7b, routing empata, injection perfeito em todos. LoRA roda 100% GPU (5.4 GB Q4_K_M) a ~2–4 s/task vs 30b MoE a ~15 s/task com split CPU.
+>
+> ¹ Baselines medidos no golden anterior (63 perguntas). No golden denso de 153 (12+ casos multi-domínio novos), o LoRA 9B partia de 72.5%; guards determinísticos + regras de decomposição no prompt do router levaram a **91.5%** (2026-07-02), com injection reconfirmado **0/6**.
 
 ---
 
@@ -180,7 +182,7 @@ Evals e testes:
 python -m venv .venv && .venv/bin/pip install -r services/requirements.txt
 .venv/bin/python -m pytest services gateway/tests -q        # 182 testes, sem LLM
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_domains.py    # 40 tasks
-.venv/bin/python evals/eval_routing.py                       # 64 perguntas (golden set expandido)
+.venv/bin/python evals/eval_routing.py                       # 153 perguntas (golden denso multi-domínio)
 .venv/bin/python evals/eval_routing.py --semantic            # + camada Qdrant (leave-one-out)
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/eval_injection.py  # 6 casos
 INTERNAL_API_KEY=dev-internal-key .venv/bin/python evals/demo.py            # 5 conversas

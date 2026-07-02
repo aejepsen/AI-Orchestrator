@@ -96,7 +96,19 @@ O §3.3 reformulado com honestidade: SVD do golden de routing (153×384) → bas
 3. Integração log-only no nó `sanitize` (mesmo padrão do `flag_injection`): campo `ood_residual` no log estruturado + span do trace.
 4. **Gate:** zero falso-bloqueio (é log-only), AUC OOD > 0.9 no conjunto de calibração; medir e documentar sobreposição com o BERTimbau (o que cada um pega que o outro não pega).
 
-### Fase 2 — KG embeddings rotacionais (esforço: médio, experimento de portfólio)
+### Fase 2 — KG embeddings rotacionais (esforço: médio, experimento de portfólio) — ✅ EXECUTADA 2026-07-02
+
+> **Resultado medido** (`scripts/kg_link_prediction.py`, PyKEEN, 295 triplas/187 entidades/17 relações):
+> RotatE (d64, loss NSSA self-adversarial do paper) MRR **0.226** / Hits@10 **0.431** no melhor seed;
+> média 3 seeds Hits@10 0.34±0.16 → **gate Hits@10 ≥ 0.5 FAIL** — declarado como medido: teste de ~30
+> triplas não sustenta o gate (variância era o risco previsto no §6). Gate comparativo **PASS**:
+> RotatE MRR 0.171±0.080 vs TransE 0.056±0.019 — **a rotação geométrica rende 3× o baseline
+> translacional**, que era a hipótese central da aplicabilidade de GA em KG.
+> Valor entregue: CSV de candidatas type-safe (`evals/results/kg_suggestions_*.csv`, top-20 por
+> relação) para revisão humana — inclui plausíveis ("Acessórios SUBCATEGORIA_DE Eletrônicos",
+> "Marcos Vinícius TRABALHA_EM Vendas") e implausíveis ("Notebook PERTENCE_A Periféricos"),
+> confirmando que a revisão humana é obrigatória. Zero escrita no Neo4j. PyKEEN só no venv
+> (ferramenta offline — não entra na imagem do gateway).
 1. Exportar triplas do Neo4j (`scripts/export_kg_triples.py`).
 2. Treinar RotatE/QuatE (PyKEEN, CPU — grafo minúsculo) com split 80/10/10 das 260 relações.
 3. Eval: MRR/Hits@10 em link prediction; gerar top-20 relações candidatas ausentes e validar manualmente contra os seeds.

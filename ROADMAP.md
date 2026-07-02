@@ -45,7 +45,7 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 ### 4b. Derivados do parecer CliffordNet (`plano_cliffordNet_parecer.md`)
 
 - ~~**Fase 1 — OOD guard (resíduo de subespaço)**~~ ✅ 2026-07-02 — `gateway/subspace_guard.py`, log-only no sanitize; AUC **0.9803** PASS (protocolo LOO), 27/30 OOD @ threshold 0.48; adversarial in-domain confirmado baixo (papel do BERTimbau). Gotchas: fit filtra casos de clarification (fora de domínio por design contaminavam o subespaço) e calibração LOO obrigatória (split 80/20 superestimava o threshold).
-- **Fase 2 — KG embeddings rotacionais (RotatE/QuatE via PyKEEN)** — pendente; offline, curadoria assistida do KG com validação humana.
+- ~~**Fase 2 — KG embeddings rotacionais (RotatE via PyKEEN)**~~ ✅ 2026-07-02 — `scripts/kg_link_prediction.py`; RotatE MRR 0.226/Hits@10 0.431 (gate 0.5 **FAIL declarado** — teste de ~30 triplas, variância ±0.16); gate comparativo PASS: **RotatE = 3× TransE em MRR** (rotação geométrica paga). CSV de candidatas type-safe p/ revisão humana em `evals/results/kg_suggestions_*.csv`; zero escrita no Neo4j.
 
 ### 5. Housekeeping
 

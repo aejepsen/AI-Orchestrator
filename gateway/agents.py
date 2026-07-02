@@ -43,9 +43,10 @@ Isso vale MESMO quando uma leitura prévia indica que vai falhar (ex.: saldo ins
 """
 
 
-# Corpo de resposta truncado na trace: suficiente pro juiz de faithfulness
-# sem inflar relatórios de eval com listagens longas.
-_TRACE_BODY_MAX_CHARS = 2000
+# Corpo de resposta truncado na trace. Precisa comportar a MAIOR listagem dos
+# serviços (~7.1k chars em /accounts): juiz de faithfulness que enxerga menos
+# contexto que o agente gera falso INFIEL (medido: 3/40 com limite de 2k).
+_TRACE_BODY_MAX_CHARS = 12_000
 
 
 @dataclass(frozen=True)

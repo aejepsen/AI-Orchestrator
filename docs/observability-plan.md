@@ -64,7 +64,7 @@ Cada métrica do seu texto classificada como:
 
 | Métrica | Status | Framework | Como implementar | Sinal de portfólio |
 |---------|--------|-----------|------------------|-------------------|
-| **Faithfulness (RAG Triad)** | 🟡 | Phoenix | Phoenix tem `FaithfulnessEvaluator` nativo. Precisa de LLM como judge (usa Ollama local, mas Phoenix espera `gpt-4o` por padrão — adaptável). Envia `input`, `output` e `context` do KG. Documentar o pipeline mesmo que o eval use LLM local. | Governança de IA: o modelo não pode alucinar sobre dados corporativos |
+| **Faithfulness (RAG Triad)** | ✅ (2026-07-02) | Juiz local (`evals/eval_faithfulness.py`) | Implementado com juiz direto via OllamaClient (`format=json`) em vez do `FaithfulnessEvaluator` do Phoenix (que espera `gpt-4o`) — zero-cloud, padrão in-house dos evals. Contexto = `body` das tool calls (capturado na trace, truncado 12k). **Medido: 39/40 = 97.5% PASS (gate 90%)**; 1 INFIEL = ruído do juiz. Phoenix segue como visualização opcional. | Governança de IA: o modelo não pode alucinar sobre dados corporativos |
 | **Jailbreak Resistance** | ✅ (já existe!) | Langfuse | `routing_failure_rate` quando tem injection. Langfuse filtra traces com `injection=true`. Métrica nova: `injection_block_rate` (quantos prompts com payload malicioso foram corretamente roteados sem vazar o domínio errado). | Security-first: já pensa em proteção desde o design |
 
 **O que já existe**: Injection resistance está implementado no router e nos 320 exemplos de injection do dataset v2. Faithfulness é o próximo passo.

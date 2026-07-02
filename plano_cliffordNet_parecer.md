@@ -81,15 +81,16 @@ O §3.3 reformulado com honestidade: SVD do golden de routing (153×384) → bas
 
 ### Fase 1 — Detector OOD (esforço: baixo, 1 sessão) — ✅ EXECUTADA 2026-07-02
 
-> **Resultado medido** (`evals/eval_ood_guard.py`): AUC in-dist vs OOD = **0.9778** (gate 0.90 PASS);
-> threshold 0.53 (P95 in-dist) flagra **27/30 OOD** com ~5% de flag em tráfego legítimo (log-only);
+> **Resultado medido** (`evals/eval_ood_guard.py`, protocolo leave-one-out): AUC = **0.9803** (gate 0.90 PASS);
+> threshold 0.48 (P95 do LOO in-dist) flagra **27/30 OOD** com ~5% de flag em tráfego legítimo (log-only);
 > adversarial in-domain com resíduo baixo (média 0.40, máx 0.59), confirmando a previsão do §2.3:
 > quem cobre injection in-distribution é o BERTimbau, não a geometria.
 > **Gotcha de calibração:** o golden contém casos de CLARIFICATION (perguntas fora de domínio por
 > design) — incluí-los no fit contamina o subespaço "legítimo" ("previsão do tempo" caía de 0.60 para
-> 0.09 de resíduo). O fit filtra como o semantic router: só exemplos roteáveis. AUC subiu 0.937→0.978.
-> Implementação: `gateway/subspace_guard.py` (SVD numpy puro), integrado log-only no nó `sanitize`
-> (`_ood_residual` no state), flags `OOD_GUARD_ENABLED=1` / `OOD_THRESHOLD=0.53`.
+> 0.09 de resíduo). O fit filtra como o semantic router: só exemplos roteáveis. E a calibração precisa
+> ser leave-one-out para espelhar o fit operacional (split 80/20 superestimava o threshold em ~0.05).
+> AUC final 0.937→0.980. Implementação: `gateway/subspace_guard.py` (SVD numpy puro), integrado
+> log-only no nó `sanitize` (`_ood_residual` no state), flags `OOD_GUARD_ENABLED=1` / `OOD_THRESHOLD=0.48`.
 1. `gateway/subspace_guard.py`: classe `SubspaceGuard(vectors, k)` com `fit()` (SVD truncada, numpy puro) e `score(q) -> float` (norma do resíduo).
 2. Calibração: distribuição de resíduos no golden (in) vs `golden_semiose_adversarial` + queries OOD sintéticas → threshold no P99 do in-distribution.
 3. Integração log-only no nó `sanitize` (mesmo padrão do `flag_injection`): campo `ood_residual` no log estruturado + span do trace.

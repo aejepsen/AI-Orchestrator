@@ -1,16 +1,17 @@
 """Calibração do OOD guard (resíduo de subespaço) — gate: AUC >= 0.90.
 
-Protocolo:
-1. Split do golden de routing: 80% fit / 20% holdout in-distribution
-   (medir resíduo nos MESMOS vetores do fit subestimaria o threshold).
-2. Resíduos em 3 conjuntos: holdout in-dist, OOD sintético (assuntos fora dos
-   4 domínios) e adversarial in-domain (`golden_semiose_adversarial`).
-3. Reporta AUC (in vs OOD), distribuições e o threshold sugerido = P95 do
-   in-distribution (sinal é LOG-ONLY: ~5% de flag em tráfego legítimo é
-   aceitável em troca de cobertura OOD real; P99 pegava só 2/30).
-   O adversarial in-domain é reportado à parte: a EXPECTATIVA
-   honesta é resíduo baixo (fraseado como query válida) — quem cobre esse caso
-   é o BERTimbau (parecer CliffordNet §2.3).
+Protocolo (leave-one-out — espelha o fit OPERACIONAL do gateway, que usa o
+golden roteável completo):
+1. In-distribution: resíduo LOO — cada exemplo pontuado contra a base ajustada
+   SEM ele (medir contra a própria base subestimaria o threshold; split 80/20
+   superestimava, pois o fit operacional é maior que o fit do split).
+2. OOD sintético e adversarial in-domain pontuados contra a base COMPLETA
+   (exatamente a base que roda em produção).
+3. Reporta AUC (LOO-in vs OOD) e threshold sugerido = P95 do LOO in-dist
+   (sinal é LOG-ONLY: ~5% de flag em tráfego legítimo é aceitável em troca de
+   cobertura OOD real). O adversarial in-domain é reportado à parte: a
+   EXPECTATIVA honesta é resíduo baixo (fraseado como query válida) — quem
+   cobre esse caso é o BERTimbau (parecer CliffordNet §2.3).
 
 Uso:
     SBERT_CACHE_DIR=$PWD/models .venv/bin/python evals/eval_ood_guard.py
@@ -110,24 +111,28 @@ def main() -> int:
     embedder = SBERTEmbedder(model_name=settings.sbert_model, cache_dir=settings.sbert_cache_dir)
 
     golden = _questions(GOLDEN, routable_only=True)
-    rng = np.random.default_rng(42)
-    order = rng.permutation(len(golden))
-    cut = int(0.8 * len(golden))
-    fit_questions = [golden[i] for i in order[:cut]]
-    holdout_questions = [golden[i] for i in order[cut:]]
-
-    print(f"Golden: {len(golden)} (fit={len(fit_questions)}, holdout={len(holdout_questions)})")
+    print(f"Golden roteável: {len(golden)} exemplos (protocolo leave-one-out)")
     started = time.monotonic()
 
+    doc_vectors = np.asarray(embedder.embed(golden, prefix_type="document"))
+    query_vectors = np.asarray(embedder.embed(golden, prefix_type="query"))
+
+    # In-dist: LOO — cada exemplo contra a base ajustada sem ele.
+    res_in = np.empty(len(golden))
+    for i in range(len(golden)):
+        loo_guard = SubspaceGuard()
+        loo_guard.fit(np.delete(doc_vectors, i, axis=0))
+        res_in[i] = loo_guard.score(query_vectors[i])
+
+    # OOD/adversarial: contra a base COMPLETA (a mesma que roda em produção).
     guard = SubspaceGuard()
-    guard.fit(np.asarray(embedder.embed(fit_questions, prefix_type="document")))
-    print(f"Base ajustada: rank={guard.rank}")
+    guard.fit(doc_vectors)
+    print(f"Base operacional: rank={guard.rank}")
 
     def residuals(questions: list[str]) -> np.ndarray:
         vectors = np.asarray(embedder.embed(questions, prefix_type="query"))
         return np.array([guard.score(v) for v in vectors])
 
-    res_in = residuals(holdout_questions)
     res_ood = residuals(OOD_QUERIES)
     adversarial_questions = _questions(ADVERSARIAL) if ADVERSARIAL.exists() else []
     res_adv = residuals(adversarial_questions) if adversarial_questions else np.array([])
@@ -136,7 +141,7 @@ def main() -> int:
     threshold = float(np.percentile(res_in, 95))
     detected = int((res_ood >= threshold).sum())
 
-    print(f"\nIn-dist (holdout {len(res_in)}):    {_stats(res_in)}")
+    print(f"\nIn-dist (LOO {len(res_in)}):    {_stats(res_in)}")
     print(f"OOD sintético ({len(res_ood)}):      {_stats(res_ood)}")
     if len(res_adv):
         print(f"Adversarial in-domain ({len(res_adv)}): {_stats(res_adv)}  ← esperado BAIXO (cobre o BERTimbau)")

@@ -27,10 +27,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Rank truncado: base full-rank torna o span permissivo demais (quase toda
-# query projeta dentro). Calibrado no golden roteável (sem clarification) +
-# 30 queries OOD sintéticas (evals/eval_ood_guard.py, 2026-07-02): energy
-# 0.99 → AUC 0.978; threshold operacional 0.53 ≈ P95 in-dist → 27/30 OOD
-# flagados com ~5% de flag em tráfego legítimo (ok: log-only).
+# query projeta dentro). Calibrado por leave-one-out no golden roteável (sem
+# clarification) + 30 queries OOD sintéticas (evals/eval_ood_guard.py,
+# 2026-07-02): energy 0.99 → AUC 0.980; threshold operacional 0.48 = P95 do
+# LOO in-dist → 27/30 OOD flagados com ~5% de flag em tráfego legítimo
+# (ok: log-only).
 DEFAULT_ENERGY = 0.99
 DEFAULT_MAX_RANK = 120
 _MIN_FIT_VECTORS = 8

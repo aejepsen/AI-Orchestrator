@@ -134,8 +134,8 @@ class Settings:
     ood_guard_enabled: bool = field(
         default_factory=lambda: os.environ.get("OOD_GUARD_ENABLED", "1") not in ("0", "false", "False")
     )
-    # Calibrado em 2026-07-02 (P95 in-dist, AUC 0.978) — evals/eval_ood_guard.py.
-    ood_threshold: float = field(default_factory=lambda: float(os.environ.get("OOD_THRESHOLD", "0.53")))
+    # Calibrado em 2026-07-02 (P95 do LOO in-dist, AUC 0.980) — evals/eval_ood_guard.py.
+    ood_threshold: float = field(default_factory=lambda: float(os.environ.get("OOD_THRESHOLD", "0.48")))
     # HITL: confirmação humana antes do dispatch de operações de ESCRITA
     # (write-intent determinístico em gateway/write_intent.py). Leitura nunca
     # pausa. Opt-in: HITL_ENABLED=1 religa o evento SSE `confirm` no /chat.

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -148,3 +148,57 @@ class OllamaClient:
             content=response_content,
             tool_calls=raw_tool_calls,
         )
+
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        temperature: float = 0.0,
+        trace: Any = None,
+        on_token: Callable[[str], None],
+    ) -> ChatResponse:
+        """Streaming token-a-token via /api/chat (stream=true, NDJSON).
+
+        `on_token` recebe cada delta de content na ordem; no fim devolve o
+        ChatResponse completo (mesmo contrato do chat()). Sem tools: o uso é
+        a síntese, que só gera texto. Deltas de `thinking` são descartados
+        como no chat() não-streaming.
+        """
+        gen = None
+        if trace:
+            gen = trace.generation(
+                name="llm.chat_stream", model=self._model,
+                input={"messages": messages},
+                model_parameters={"temperature": temperature},
+            )
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "stream": True,
+            "think": self._model.startswith("qwen3") and "qwen3.5" not in self._model,
+            "keep_alive": self._keep_alive,
+            "options": {"temperature": temperature},
+        }
+        parts: list[str] = []
+        try:
+            with self._client.stream("POST", f"{self._base_url}/api/chat", json=payload) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except ValueError as exc:
+                        raise LLMError(f"Chunk NDJSON inválido do Ollama: {line[:200]!r}") from exc
+                    delta = (chunk.get("message") or {}).get("content") or ""
+                    if delta:
+                        parts.append(delta)
+                        on_token(delta)
+                    if chunk.get("done"):
+                        break
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Falha no streaming ao Ollama ({self._base_url}): {exc}") from exc
+        content = "".join(parts).strip()
+        if gen:
+            gen.end(output={"content": content})
+        return ChatResponse(content=content, tool_calls=())

@@ -152,6 +152,9 @@ def create_app(
                     trace_id=trace_id,
                     thread_id=tid,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),
+                    # Streaming token-a-token da síntese multi-domínio; o
+                    # evento `final` continua chegando com a resposta completa.
+                    on_token=lambda t: emit("token", {"t": t}),
                     # HITL (opt-in HITL_ENABLED=1): o grafo só pausa em write
                     # intent (gateway/write_intent.py); leitura nunca confirma.
                     on_confirm=(
@@ -228,6 +231,15 @@ def create_app(
                 from langgraph.types import Command
 
                 graph = get_graph()
+                # Threads do pool são reutilizadas: sem reset explícito, os
+                # callbacks thread-local do request ANTERIOR (queue já morta)
+                # vazariam para este resume. Seta os desta conexão.
+                graph._local.on_agent = lambda domain, answer: emit(
+                    "agent", {"domain": domain, "answer": answer}
+                )
+                graph._local.on_token = lambda t: emit("token", {"t": t})
+                graph._local.on_confirm = None
+                graph._local.trace = None
                 config = {"configurable": {"thread_id": thread_id}}
                 stream = graph._compiled.stream(
                     Command(resume={"approved": body.approved}),

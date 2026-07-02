@@ -240,4 +240,6 @@ Backlog (fora do escopo da PoC)
 
 - Reset de estado dos serviços entre runs de eval (resíduo financas-09: conta já liquidada de run anterior).
 - Registry anexar campos do schema de resposta à description da tool (resíduo estoque-03: modelo julga capacidade da tool só pela descrição).
-- Streaming token-a-token na síntese; RAG sobre documentos não estruturados.
+- RAG sobre documentos não estruturados.
+
+Implementados pós-PoC (2026-07-02): reset de estado entre runs de eval (`POST /admin/reset`), response schema na description das tools, streaming token-a-token na síntese multi-domínio (evento SSE `token` + fallback `final`), HITL seletivo por write-intent, faithfulness eval com juiz local (97.5%).

@@ -43,6 +43,8 @@ logger = logging.getLogger("gateway")
 AgentCallback = Callable[[str, str], None]
 # Callback opcional invocado quando confirmação é necessária: (domains, plan).
 ConfirmCallback = Callable[[list[str], str], None]
+# Callback opcional invocado por delta de token na síntese (SSE `token`).
+TokenCallback = Callable[[str], None]
 
 
 class GraphState(TypedDict, total=False):
@@ -436,22 +438,28 @@ class GatewayGraph:
         results = state["agent_results"]
         domains = state["route"].get("domains", [])
         if len(domains) == 1:
+            # Resposta vem pronta do agente — não há geração pra streamar.
             answer = results[domains[0]]["answer"]
         else:
             blocks = "\n".join(f"[{domain}]\n{results[domain]['answer']}" for domain in domains)
-            response = self._llm.chat(
-                [
-                    {"role": "system", "content": _SYNTH_SYSTEM},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"<user_question>\n{state['sanitized']}\n</user_question>\n\n"
-                            f"<agent_answers>\n{blocks}\n</agent_answers>"
-                        ),
-                    },
-                ],
-                trace=trace,
-            )
+            messages = [
+                {"role": "system", "content": _SYNTH_SYSTEM},
+                {
+                    "role": "user",
+                    "content": (
+                        f"<user_question>\n{state['sanitized']}\n</user_question>\n\n"
+                        f"<agent_answers>\n{blocks}\n</agent_answers>"
+                    ),
+                },
+            ]
+            # Streaming token-a-token quando o chamador registrou on_token
+            # (SSE `token` no /chat). O evento `final` continua sendo emitido
+            # com a resposta completa — fonte de verdade pro frontend.
+            on_token = getattr(self._local, "on_token", None)
+            if on_token:
+                response = self._llm.chat_stream(messages, trace=trace, on_token=on_token)
+            else:
+                response = self._llm.chat(messages, trace=trace)
             answer = response.content
 
         # Acumula histórico conversacional.
@@ -518,6 +526,7 @@ class GatewayGraph:
         trace_id: str | None = None,
         thread_id: str | None = None,
         on_confirm: ConfirmCallback | None = None,
+        on_token: TokenCallback | None = None,
     ) -> GraphState:
         """Executa o grafo para uma pergunta; retorna o estado final."""
         tid = trace_id or str(uuid.uuid4())
@@ -528,6 +537,7 @@ class GatewayGraph:
         # Callbacks e trace em thread-local (não serializáveis pelo checkpointer).
         self._local.on_agent = on_agent
         self._local.on_confirm = on_confirm
+        self._local.on_token = on_token
         self._local.trace = self._tracer.trace(trace_id=tid, name="chat") if self._tracer else None
 
         config: dict[str, Any] | None = None
@@ -550,6 +560,7 @@ class GatewayGraph:
         trace_id: str | None = None,
         thread_id: str | None = None,
         on_confirm: ConfirmCallback | None = None,
+        on_token: TokenCallback | None = None,
     ):
         """Itera updates por nó (stream_mode='updates') — base do SSE."""
         tid = trace_id or str(uuid.uuid4())
@@ -559,6 +570,7 @@ class GatewayGraph:
 
         self._local.on_agent = on_agent
         self._local.on_confirm = on_confirm
+        self._local.on_token = on_token
         self._local.trace = self._tracer.trace(trace_id=tid, name="chat") if self._tracer else None
 
         config: dict[str, Any] | None = None

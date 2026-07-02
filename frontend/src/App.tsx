@@ -34,6 +34,7 @@ type ItemBody =
   | { kind: "route"; route: RoutePlan }
   | { kind: "agent"; domain: string; answer: string }
   | { kind: "clarification"; text: string }
+  | { kind: "streaming"; text: string }
   | { kind: "final"; text: string }
   | { kind: "confirm"; domains: string[]; plan: string; threadId: string }
   | { kind: "aborted" }
@@ -72,6 +73,28 @@ export default function App() {
 
   const append = useCallback((item: ItemBody) => {
     setItems((prev) => [...prev, { ...item, id: nextId() }]);
+  }, []);
+
+  /** Acumula deltas da síntese num único balão "streaming". */
+  const appendToken = useCallback((delta: string) => {
+    setItems((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.kind === "streaming") {
+        return [...prev.slice(0, -1), { ...last, text: last.text + delta }];
+      }
+      return [...prev, { kind: "streaming", text: delta, id: nextId() }];
+    });
+  }, []);
+
+  /** `final` é a fonte de verdade: substitui o balão streaming (se houver). */
+  const finalize = useCallback((answer: string) => {
+    setItems((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.kind === "streaming") {
+        return [...prev.slice(0, -1), { kind: "final", text: answer, id: last.id }];
+      }
+      return [...prev, { kind: "final", text: answer, id: nextId() }];
+    });
   }, []);
 
   function unlock(token: string) {
@@ -132,8 +155,12 @@ export default function App() {
                 append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
               }
               break;
+            case "token":
+              setStage("synthesize");
+              appendToken(event.data.t);
+              break;
             case "final":
-              append({ kind: "final", text: event.data.answer });
+              finalize(event.data.answer);
               break;
             case "confirm":
               setStage("confirm");
@@ -213,8 +240,12 @@ export default function App() {
                 append({ kind: "agent", domain: event.data.domain, answer: event.data.answer });
               }
               break;
+            case "token":
+              setStage("synthesize");
+              appendToken(event.data.t);
+              break;
             case "final":
-              append({ kind: "final", text: event.data.answer });
+              finalize(event.data.answer);
               break;
             case "confirm":
               setStage("confirm");
@@ -370,6 +401,15 @@ export default function App() {
                   >
                     <p className="font-mono text-[11px] tracking-wide text-amber-300 uppercase">precisa de contexto</p>
                     <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-ink/90">{item.text}</p>
+                  </div>
+                );
+              case "streaming":
+                return (
+                  <div key={item.id} className="flex justify-start">
+                    <p className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-ink">
+                      {item.text}
+                      <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-ink/60 align-middle" />
+                    </p>
                   </div>
                 );
               case "final":

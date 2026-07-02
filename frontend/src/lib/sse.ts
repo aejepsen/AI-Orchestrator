@@ -34,9 +34,15 @@ export interface ConfirmPayload {
   thread_id: string;
 }
 
+/** Delta de token da síntese multi-domínio; `final` chega ao fim com o texto completo. */
+export interface TokenDelta {
+  t: string;
+}
+
 export type ChatEvent =
   | { type: "route"; data: RoutePlan }
   | { type: "agent"; data: AgentResult }
+  | { type: "token"; data: TokenDelta }
   | { type: "final"; data: FinalAnswer }
   | { type: "confirm"; data: ConfirmPayload }
   | { type: "error"; data: ErrorPayload };

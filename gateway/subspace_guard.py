@@ -27,10 +27,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Rank truncado: base full-rank torna o span permissivo demais (quase toda
-# query projeta dentro). Calibrado no golden 153 + 30 queries OOD sintéticas
-# (evals/eval_ood_guard.py, 2026-07-02): energy 0.99 deu a melhor separação
-# (AUC 0.937 vs 0.925 a 0.90); threshold operacional 0.60 ≈ P95 in-dist →
-# ~24/30 OOD flagados com ~5% de flag em tráfego legítimo (ok: log-only).
+# query projeta dentro). Calibrado no golden roteável (sem clarification) +
+# 30 queries OOD sintéticas (evals/eval_ood_guard.py, 2026-07-02): energy
+# 0.99 → AUC 0.978; threshold operacional 0.53 ≈ P95 in-dist → 27/30 OOD
+# flagados com ~5% de flag em tráfego legítimo (ok: log-only).
 DEFAULT_ENERGY = 0.99
 DEFAULT_MAX_RANK = 120
 _MIN_FIT_VECTORS = 8
@@ -122,10 +122,16 @@ class OODGuard:
             return False
         try:
             path = Path(self._examples_path)
+            # Mesmo filtro do semantic router: exemplos de CLARIFICATION são
+            # perguntas propositalmente fora de domínio — incluí-los no fit
+            # contamina o subespaço "legítimo" e mata a separação OOD
+            # (medido: "previsão do tempo" caía de 0.60 para 0.09 de resíduo).
             questions = [
-                json.loads(line)["question"]
+                record["question"]
                 for line in path.read_text(encoding="utf-8").splitlines()
                 if line.strip()
+                for record in [json.loads(line)]
+                if not record.get("expect_clarification") and record.get("expect_domains")
             ]
             vectors = self._embedder.embed(questions, prefix_type="document")
             self._guard.fit(np.asarray(vectors))

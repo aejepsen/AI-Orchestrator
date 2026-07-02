@@ -74,12 +74,17 @@ OOD_QUERIES = [
 ]
 
 
-def _questions(path: Path) -> list[str]:
-    return [
-        json.loads(line)["question"]
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+def _questions(path: Path, *, routable_only: bool = False) -> list[str]:
+    """`routable_only`: exclui casos de clarification (fora de domínio por design)."""
+    questions = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if routable_only and (record.get("expect_clarification") or not record.get("expect_domains")):
+            continue
+        questions.append(record["question"])
+    return questions
 
 
 def auc(pos: np.ndarray, neg: np.ndarray) -> float:
@@ -104,7 +109,7 @@ def main() -> int:
     settings = load_settings()
     embedder = SBERTEmbedder(model_name=settings.sbert_model, cache_dir=settings.sbert_cache_dir)
 
-    golden = _questions(GOLDEN)
+    golden = _questions(GOLDEN, routable_only=True)
     rng = np.random.default_rng(42)
     order = rng.permutation(len(golden))
     cut = int(0.8 * len(golden))

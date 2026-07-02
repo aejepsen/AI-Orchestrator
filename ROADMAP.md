@@ -44,7 +44,7 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 
 ### 4b. Derivados do parecer CliffordNet (`plano_cliffordNet_parecer.md`)
 
-- ~~**Fase 1 — OOD guard (resíduo de subespaço)**~~ ✅ 2026-07-02 — `gateway/subspace_guard.py`, log-only no sanitize; AUC 0.9371 PASS, 23/30 OOD @ threshold 0.60; adversarial in-domain confirmado baixo (papel do BERTimbau).
+- ~~**Fase 1 — OOD guard (resíduo de subespaço)**~~ ✅ 2026-07-02 — `gateway/subspace_guard.py`, log-only no sanitize; AUC **0.9778** PASS, 27/30 OOD @ threshold 0.53; adversarial in-domain confirmado baixo (papel do BERTimbau). Gotcha: fit filtra casos de clarification do golden (fora de domínio por design contaminavam o subespaço).
 - **Fase 2 — KG embeddings rotacionais (RotatE/QuatE via PyKEEN)** — pendente; offline, curadoria assistida do KG com validação humana.
 
 ### 5. Housekeeping

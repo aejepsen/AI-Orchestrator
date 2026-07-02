@@ -43,11 +43,17 @@ Isso vale MESMO quando uma leitura prévia indica que vai falhar (ex.: saldo ins
 """
 
 
+# Corpo de resposta truncado na trace: suficiente pro juiz de faithfulness
+# sem inflar relatórios de eval com listagens longas.
+_TRACE_BODY_MAX_CHARS = 2000
+
+
 @dataclass(frozen=True)
 class ToolTraceEntry:
     name: str
     args: dict[str, Any]
     status: int
+    body: Any = None  # observação devolvida pela API (contexto do RAG Triad)
 
 
 @dataclass(frozen=True)
@@ -60,7 +66,13 @@ class AgentResult:
     stop_reason: str = "answer"  # answer | max_iters | deadline
 
     def trace_as_dicts(self) -> list[dict[str, Any]]:
-        return [{"name": t.name, "args": t.args, "status": t.status} for t in self.tool_trace]
+        entries = []
+        for t in self.tool_trace:
+            body = json.dumps(t.body, ensure_ascii=False, default=str) if t.body is not None else None
+            if body and len(body) > _TRACE_BODY_MAX_CHARS:
+                body = body[:_TRACE_BODY_MAX_CHARS] + "…[truncado]"
+            entries.append({"name": t.name, "args": t.args, "status": t.status, "body": body})
+        return entries
 
 
 def build_system_prompt(domain: str, today: date | None = None) -> str:
@@ -135,7 +147,11 @@ def run_domain_agent(
         messages.append(_assistant_message(response))
         for call in response.tool_calls:
             result = _execute_call(registry, domain, call)
-            trace.append(ToolTraceEntry(name=call.name, args=call.arguments, status=result["status"]))
+            trace.append(
+                ToolTraceEntry(
+                    name=call.name, args=call.arguments, status=result["status"], body=result.get("body")
+                )
+            )
             messages.append(
                 {
                     "role": "tool",

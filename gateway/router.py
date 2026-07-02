@@ -252,12 +252,19 @@ def _apply_routing_guards(question: str, plan: RoutePlan) -> RoutePlan:
             plan.domains = [d for d in plan.domains if d != "estoque"]
 
     # ── Cliente + desconto → vendas, não estoque ─────────────────────────
-    # "cliente chorando descontinho" é política de desconto, não estoque
+    # "cliente chorando descontinho" é política de desconto, não estoque.
+    # Exceção: sinal de disponibilidade ("500 unidades", "saldo", SKU) mantém
+    # estoque — "aceitar pedido de 500 unidades com 15% de desconto" é o
+    # exemplo multi-domínio canônico do prompt do router.
     _DISCOUNT_RE = re.compile(
         r'\b(?:desconto|descontinho|descontão|abatimento)\b', re.IGNORECASE
     )
+    _AVAILABILITY_RE = re.compile(
+        r'\b(?:unidades?|disponive\w*|disponibilidade|estoque|saldo|sku)\b'
+    )
     if _DISCOUNT_RE.search(question) and "estoque" in plan.domains:
-        plan.domains = [d for d in plan.domains if d != "estoque"]
+        if not _AVAILABILITY_RE.search(normalized):
+            plan.domains = [d for d in plan.domains if d != "estoque"]
 
     # ═══════════════════════════════════════════════════════════════════════
     #  FASE 2: ADIÇÕES  — domínios que o LLM consistentemente omite

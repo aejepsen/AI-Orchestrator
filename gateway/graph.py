@@ -61,6 +61,8 @@ class GraphState(TypedDict, total=False):
     pending_confirmation: dict[str, Any] | None
     # Segurança: flag de injection semântica detectada.
     _injection_suspect: bool
+    # Segurança (log-only): resíduo OOD da query vs subespaço do golden.
+    _ood_residual: float | None
     # Semiose: route do turno anterior (persistido pelo checkpointer).
     _last_route: dict[str, Any]
     # Semiose: sinais de contexto extraídos pelo enricher.
@@ -107,6 +109,8 @@ class GatewayGraph:
             keep_alive=runner.settings.keep_alive,
         )
         self._settings = settings or getattr(runner, "settings", None)
+        # OOD guard (log-only): construído junto do embedder do semantic router.
+        self._ood_guard = None
         if semantic is None and self._settings is not None and self._settings.semantic_enabled:
             from gateway.semantic_router import SemanticRouter
 
@@ -140,6 +144,14 @@ class GatewayGraph:
                 rrf_k=self._settings.rrf_k,
                 api_key=self._settings.qdrant_api_key,
             )
+            if self._settings.ood_guard_enabled:
+                from gateway.subspace_guard import OODGuard
+
+                self._ood_guard = OODGuard(
+                    embedder,
+                    examples_path=self._settings.routing_examples_path,
+                    threshold=self._settings.ood_threshold,
+                )
         self._semantic = semantic
         self._tracer = tracer
 
@@ -218,6 +230,19 @@ class GatewayGraph:
             update["trace_id"] = str(uuid.uuid4())
         if update.get("_injection_suspect"):
             logger.warning("injection_suspect detected in question: %s", state["question"][:120])
+        # 3º sinal (LOG-ONLY): resíduo OOD vs subespaço do golden. Nunca bloqueia;
+        # cobre out-of-distribution que regex e BERTimbau não veem.
+        if self._ood_guard is not None:
+            residual = self._ood_guard.score(update["sanitized"])
+            if residual is not None:
+                update["_ood_residual"] = residual
+                if residual >= self._ood_guard.threshold:
+                    logger.warning(
+                        "ood_residual=%.3f >= %.3f (query fora da distribuição de uso): %s",
+                        residual,
+                        self._ood_guard.threshold,
+                        state["question"][:120],
+                    )
         _log_node({**state, **update}, "sanitize", started, domains=[])
         if span:
             span.end()

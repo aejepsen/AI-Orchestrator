@@ -42,6 +42,11 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 | Human Takeover Rate | 🔴 doc-only | `clarification_rate` derivada do RoutePlan |
 | RAOI | 🟡 doc-only | Fórmula no README/dashboard (precisa de dados reais de operação) |
 
+### 4b. Derivados do parecer CliffordNet (`plano_cliffordNet_parecer.md`)
+
+- ~~**Fase 1 — OOD guard (resíduo de subespaço)**~~ ✅ 2026-07-02 — `gateway/subspace_guard.py`, log-only no sanitize; AUC 0.9371 PASS, 23/30 OOD @ threshold 0.60; adversarial in-domain confirmado baixo (papel do BERTimbau).
+- **Fase 2 — KG embeddings rotacionais (RotatE/QuatE via PyKEEN)** — pendente; offline, curadoria assistida do KG com validação humana.
+
 ### 5. Housekeeping
 
 - Arquivo untracked na raiz: `"Para criar salvaguardas (safeguards) robustas"` (notas sobre defesas anti-injection, 5.4 KB) — mover para `docs/notes-safeguards.md` ou descartar.

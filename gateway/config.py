@@ -129,6 +129,13 @@ class Settings:
     injection_detector_enabled: bool = field(
         default_factory=lambda: os.environ.get("INJECTION_DETECTOR_ENABLED", "1") not in ("0", "false", "False")
     )
+    # OOD guard (log-only): resíduo de subespaço da query vs golden de routing
+    # (SVD, numpy, CPU). 3º sinal de segurança — não bloqueia, só loga/tracia.
+    ood_guard_enabled: bool = field(
+        default_factory=lambda: os.environ.get("OOD_GUARD_ENABLED", "1") not in ("0", "false", "False")
+    )
+    # Calibrado em 2026-07-02 (P95 in-dist, AUC 0.937) — evals/eval_ood_guard.py.
+    ood_threshold: float = field(default_factory=lambda: float(os.environ.get("OOD_THRESHOLD", "0.60")))
     # HITL: confirmação humana antes do dispatch de operações de ESCRITA
     # (write-intent determinístico em gateway/write_intent.py). Leitura nunca
     # pausa. Opt-in: HITL_ENABLED=1 religa o evento SSE `confirm` no /chat.

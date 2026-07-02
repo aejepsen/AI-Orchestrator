@@ -152,8 +152,15 @@ def create_app(
                     trace_id=trace_id,
                     thread_id=tid,
                     on_agent=lambda domain, answer: emit("agent", {"domain": domain, "answer": answer}),
-                    # HITL desabilitado até detecção de intent write vs read.
-                    # on_confirm=lambda domains, plan: emit("confirm", {"domains": domains, "plan": plan, "thread_id": tid}),
+                    # HITL (opt-in HITL_ENABLED=1): o grafo só pausa em write
+                    # intent (gateway/write_intent.py); leitura nunca confirma.
+                    on_confirm=(
+                        (lambda domains, plan: emit(
+                            "confirm", {"domains": domains, "plan": plan, "thread_id": tid}
+                        ))
+                        if _settings_boot.hitl_enabled
+                        else None
+                    ),
                 )
                 for update in stream:
                     for node, payload in update.items():

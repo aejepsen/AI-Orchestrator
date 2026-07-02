@@ -35,6 +35,7 @@ from gateway.query_enricher import ContextSignal, enrich_query, gather_signals
 from gateway.router import classify_intent
 from gateway.sanitize import flag_injection, sanitize_question
 from gateway.tracing import TraceHandle, Tracer
+from gateway.write_intent import detect_write_intent
 
 logger = logging.getLogger("gateway")
 
@@ -306,15 +307,23 @@ class GatewayGraph:
         return update
 
     def _confirm_dispatch(self, state: GraphState) -> GraphState:
-        """Pausa para confirmação humana antes de executar agentes.
+        """Pausa para confirmação humana antes de executar agentes de ESCRITA.
 
-        Só ativa interrupt() quando há callback de confirmação (on_confirm).
+        Só ativa interrupt() quando há callback de confirmação (on_confirm) E
+        a query tem intenção de escrita (write_intent determinístico). Leitura
+        nunca exige confirmação — auto-aprova direto pro dispatch.
         Sem callback (testes, evals, modo automático): auto-aprova.
         """
         on_confirm: ConfirmCallback | None = getattr(self._local, "on_confirm", None)
 
         # Sem callback = modo automático: prossegue direto pro dispatch.
         if not on_confirm:
+            return {}
+
+        # Consulta não muda estado — segue sem pausa (Harness antes de Model;
+        # falso negativo auto-aprova, a regra de negócio continua na API).
+        is_write, write_terms = detect_write_intent(state["sanitized"])
+        if not is_write:
             return {}
 
         route = state["route"]
@@ -333,6 +342,7 @@ class GatewayGraph:
                 "domains": domains,
                 "plan": plan,
                 "question": state["sanitized"],
+                "write_terms": write_terms,
             })
 
             if not decision.get("approved", False):

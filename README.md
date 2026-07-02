@@ -132,7 +132,7 @@ Observabilidade
 
 **Estado conversacional**: `MemorySaver` checkpointer com `thread_id` por sessao. Frontend persiste thread em localStorage; botao "Nova conversa" reseta contexto.
 
-**HITL (Human-in-the-Loop)**: no `confirm_dispatch` com `interrupt()` do LangGraph + endpoint `POST /chat/{thread_id}/resume`. Preparado e funcional, **desabilitado por padrao** (requer deteccao de write intent para ativacao seletiva).
+**HITL (Human-in-the-Loop)**: no `confirm_dispatch` com `interrupt()` do LangGraph + endpoint `POST /chat/{thread_id}/resume`. Ativação seletiva por **write intent determinístico** (`gateway/write_intent.py`: léxico PT das write ops dos serviços; leitura nunca pausa, frases nominais como "contas a pagar" excluídas). Opt-in via `HITL_ENABLED=1`.
 
 Como rodar
 
@@ -226,7 +226,7 @@ Gotchas documentados
 2. **Estado residual entre turns.** Com checkpointer, `final_answer` do turn anterior persiste e engana conditional edges. Fix: `_sanitize` limpa campos de resultado a cada novo turn.
 3. **Null payload no interrupt.** `interrupt()` pode yieldar payloads `None` no stream. Guard: `if not payload: continue`.
 4. **Langfuse Cloud (default) / v2 self-hosted (fallback).** Gateway conecta ao Langfuse Cloud (`us.cloud.langfuse.com`) por padrão. Containers Langfuse v2 + Postgres mantidos no compose para fallback local (basta alterar `LANGFUSE_HOST`). Pin `langfuse/langfuse:2` (v3 requer ClickHouse).
-5. **HITL desabilitado.** Sem detecção de write intent, `interrupt()` dispara para toda query (incluindo leituras). Auto-aprova sem callback até a detecção existir.
+5. **HITL com write-intent (opt-in `HITL_ENABLED=1`).** `interrupt()` só dispara para operações de escrita (write-intent determinístico em `gateway/write_intent.py`); leitura auto-aprova. Falso negativo auto-aprova — a regra de negócio vive na API; HITL é governança.
 6. **COLLATE NOCASE para case-sensitivity SQLite.** LLMs enviam parâmetros em lowercase; SQLite default é case-sensitive. Todo filtro textual nos microsserviços usa `COLLATE NOCASE`.
 7. **Fail-closed auth (`ALLOW_OPEN_ACCESS`).** Sem `ACCESS_TOKEN`, `/chat` é bloqueado. Modo dev aberto requer `ALLOW_OPEN_ACCESS=1` explícito.
 8. **CF-Connecting-IP para IP real.** Cloudflare seta este header (não spoofável). Fallback: `X-Real-IP` → `X-Forwarded-For` → socket.

@@ -129,6 +129,12 @@ class Settings:
     injection_detector_enabled: bool = field(
         default_factory=lambda: os.environ.get("INJECTION_DETECTOR_ENABLED", "1") not in ("0", "false", "False")
     )
+    # HITL: confirmação humana antes do dispatch de operações de ESCRITA
+    # (write-intent determinístico em gateway/write_intent.py). Leitura nunca
+    # pausa. Opt-in: HITL_ENABLED=1 religa o evento SSE `confirm` no /chat.
+    hitl_enabled: bool = field(
+        default_factory=lambda: os.environ.get("HITL_ENABLED", "0") not in ("0", "false", "False")
+    )
     # Semiose — Camada A: enriquecimento contextual da query. Desabilita com ENRICHER_ENABLED=0.
     enricher_enabled: bool = field(
         default_factory=lambda: os.environ.get("ENRICHER_ENABLED", "1") not in ("0", "false", "False")

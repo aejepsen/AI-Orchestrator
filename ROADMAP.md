@@ -29,7 +29,7 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 
 ### 3. HITL — write-intent detection (Fase 6, residual)
 
-HITL implementado (`interrupt()` no nó `confirm_dispatch`, `POST /chat/{thread_id}/resume`, `ConfirmCard.tsx`) mas **desabilitado por padrão**: sem detecção write vs read, dispara pra toda query. Pendente: classificar intent de escrita (regra/regex sobre tools chamadas ou flag no RoutePlan) → habilitar HITL só em writes.
+✅ **CONCLUÍDO 2026-07-02.** `gateway/write_intent.py` + gate no `_confirm_dispatch` (leitura auto-aprova) + flag `HITL_ENABLED` (main.py religa o evento SSE `confirm`). Evolução futura: confirmar no nível da tool call (interceptar POST/PUT/DELETE no executor) em vez do pré-dispatch.
 
 ### 4. Observabilidade — métricas faltantes (`docs/observability-plan.md`)
 
@@ -53,7 +53,7 @@ HITL implementado (`interrupt()` no nó `confirm_dispatch`, `POST /chat/{thread_
 
 1. ~~**Quick wins de eval**~~ ✅ **CONCLUÍDO 2026-07-02** — `POST /admin/reset` nos 4 serviços (fora do OpenAPI, X-Internal-Key); response schema anexado à description das tools (`_response_summary` em registry.py); `task_success_rate` + `tools_per_task` (média/P95) no eval_domains; reset automático pré-run (`--no-reset` p/ pular). Bônus: fix de regressão no guard desconto→remove-estoque (`_AVAILABILITY_RE` em router.py) que quebrava 2 testes multi-domínio. 335 testes verdes. **Pendente: rebuild dos containers p/ ativar em prod (combinar horário).**
 2. ~~**S2 retrieval híbrido (BM25+RRF)**~~ ✅ **CONCLUÍDO 2026-07-02** — `gateway/bm25.py` (Okapi stdlib) + `_rrf_fuse` no SemanticRouter (reordena pool denso 2×top_k; cosseno preservado nos gates); flag `HYBRID_RETRIEVAL_ENABLED` default off. Medição: no threshold 0.92 (prod) camada semântica não dispara em leave-one-out (efeito nulo); na banda 0.80 o híbrido corta falsos aceites (10→8 disparos) e recupera +1.3 pp (69.3%→70.6%), mas banda <0.92 segue pior que fallback LLM → default off; destrava com embedder melhor. Nota completa em PLANO_SEMIOSE.md. **Achado colateral: routing no golden expandido (153 casos) está em 72.5% (gate 90%) — dominado por sub-roteamento multi-domínio; README anuncia 90.5% do golden antigo (63).**
-3. **HITL write-intent** — transforma feature desabilitada em diferencial de demo (governança).
+3. ~~**HITL write-intent**~~ ✅ **CONCLUÍDO 2026-07-02** — `gateway/write_intent.py` (léxico determinístico PT das write ops; frases nominais "contas a pagar" excluídas); `_confirm_dispatch` só pausa em escrita; `HITL_ENABLED=1` religa o evento SSE `confirm` no /chat (main.py). 24 testes novos. Ativação em prod requer rebuild + `HITL_ENABLED=1` no .env.
 4. **Faithfulness eval (Phoenix + judge local)** — completa o RAG Triad, forte sinal de portfólio.
 5. **Streaming token-a-token** — UX da síntese; independente dos anteriores.
 6. **S5 multi-query / S4 GraphRAG / RAG docs** — experimentais; só se métricas das etapas 1–2 justificarem.

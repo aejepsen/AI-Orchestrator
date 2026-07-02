@@ -11,7 +11,13 @@ from typing import AsyncIterator, Literal
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from common import NotFound, RuleViolation, register_error_handlers, register_internal_auth
+from common import (
+    NotFound,
+    RuleViolation,
+    register_admin_reset,
+    register_error_handlers,
+    register_internal_auth,
+)
 from vendas import db, rules, seed
 
 
@@ -34,6 +40,7 @@ app = FastAPI(
 )
 register_error_handlers(app)
 register_internal_auth(app)
+register_admin_reset(app, service="vendas", connect=db.connect, init_schema=db.init_schema, seed=seed.seed)
 
 SalesRole = Literal["vendedor", "gerente"]
 OrderStatus = Literal["ativo", "concluido", "cancelado"]

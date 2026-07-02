@@ -7,7 +7,7 @@ from typing import AsyncIterator, Literal
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 
-from common import NotFound, register_error_handlers, register_internal_auth
+from common import NotFound, register_admin_reset, register_error_handlers, register_internal_auth
 from rh import db, rules, seed
 
 
@@ -30,6 +30,7 @@ app = FastAPI(
 )
 register_error_handlers(app)
 register_internal_auth(app)
+register_admin_reset(app, service="rh", connect=db.connect, init_schema=db.init_schema, seed=seed.seed)
 
 ReimbursementCategory = Literal["viagem", "refeicao", "home_office"]
 

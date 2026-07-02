@@ -14,6 +14,8 @@ warning — dev-friendly; em produção o compose define a key.
 import hmac
 import logging
 import os
+import sqlite3
+from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -74,6 +76,37 @@ def register_internal_auth(app: FastAPI) -> None:
                 },
             )
         return await call_next(request)
+
+
+def register_admin_reset(
+    app: FastAPI,
+    *,
+    service: str,
+    connect: Callable[[], sqlite3.Connection],
+    init_schema: Callable[[sqlite3.Connection], None],
+    seed: Callable[[sqlite3.Connection], None],
+) -> None:
+    """`POST /admin/reset`: descarta todo o estado e re-semeia com o seed canônico.
+
+    Uso exclusivo dos evals (estado residual entre runs contamina resultados —
+    resíduo financas-09). Fora do OpenAPI (`include_in_schema=False`): invisível
+    para o tool registry do gateway e para o LLM; protegido pelo middleware de
+    `X-Internal-Key` como qualquer rota de negócio.
+    """
+
+    @app.post("/admin/reset", include_in_schema=False)
+    def admin_reset() -> dict[str, str]:
+        with connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+            for row in tables:
+                conn.execute(f'DROP TABLE IF EXISTS "{row[0]}"')
+            init_schema(conn)
+            seed(conn)
+            conn.execute("PRAGMA foreign_keys = ON")
+        return {"status": "reset", "service": service}
 
 
 def register_error_handlers(app: FastAPI) -> None:

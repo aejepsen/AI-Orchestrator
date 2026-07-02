@@ -94,6 +94,39 @@ def _request_body_schema(operation: dict[str, Any], components: dict[str, Any]) 
     return schema
 
 
+def _response_summary(operation: dict[str, Any], components: dict[str, Any]) -> str | None:
+    """Resume os campos do schema de resposta 2xx para a description da tool.
+
+    O modelo julga a capacidade de uma tool só pela description (o schema de
+    resposta não entra no tool schema do Ollama) — sem isso ele conclui
+    "indisponível" para dados que a tool devolve (resíduo estoque-03).
+    """
+    schema = None
+    for status in ("200", "201"):
+        content = operation.get("responses", {}).get(status, {}).get("content", {})
+        schema = content.get(_JSON_CONTENT, {}).get("schema")
+        if schema:
+            break
+    if not schema:
+        return None
+    schema = _resolve_ref(schema, components)
+    prefix = ""
+    if schema.get("type") == "array":
+        schema = _resolve_ref(schema.get("items", {}), components)
+        prefix = "lista de itens com"
+    properties = schema.get("properties")
+    if not properties:
+        return None
+    fields = []
+    for field_name, field_schema in properties.items():
+        field_schema = _flatten_schema(dict(field_schema), components)
+        enum = field_schema.get("enum")
+        kind = "|".join(str(v) for v in enum) if enum else field_schema.get("type", "object")
+        fields.append(f"{field_name} ({kind})")
+    prefix = prefix or "campos"
+    return f"Resposta: {prefix} {', '.join(fields)}"
+
+
 def parse_openapi(spec: dict[str, Any]) -> dict[str, ToolSpec]:
     """Converte um documento OpenAPI em ToolSpecs indexados por operation_id."""
     components = spec.get("components", {}).get("schemas", {})
@@ -105,7 +138,11 @@ def parse_openapi(spec: dict[str, Any]) -> dict[str, ToolSpec]:
             name = operation["operationId"]
             description = ". ".join(
                 part.strip().rstrip(".")
-                for part in (operation.get("summary", ""), operation.get("description", ""))
+                for part in (
+                    operation.get("summary", ""),
+                    operation.get("description", ""),
+                    _response_summary(operation, components) or "",
+                )
                 if part.strip()
             )
             properties: dict[str, Any] = {}

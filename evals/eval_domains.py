@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -102,6 +105,25 @@ def check(record: dict[str, Any], result: AgentResult) -> list[str]:
     return failures
 
 
+def reset_services(settings) -> None:
+    """Reseta cada serviço para o seed canônico via `POST /admin/reset`.
+
+    Estado residual entre runs contamina o eval (resíduo financas-09: conta
+    já liquidada em run anterior). Falha em um serviço não aborta o eval —
+    containers antigos sem o endpoint seguem com o estado atual (aviso).
+    """
+    headers = {"X-Internal-Key": settings.internal_api_key} if settings.internal_api_key else None
+    with httpx.Client(timeout=10.0, headers=headers) as client:
+        for domain in DOMAINS:
+            try:
+                response = client.post(f"{settings.service_urls[domain]}/admin/reset")
+                response.raise_for_status()
+                print(f"Reset {domain}: seed canônico restaurado.", flush=True)
+            except httpx.HTTPError as exc:
+                print(f"AVISO: reset de {domain} falhou ({exc}) — seguindo com estado atual.", flush=True)
+    print(flush=True)
+
+
 def warm_up(settings) -> float:
     """Uma chamada curta para garantir o MoE residente (cold load ~55 s)."""
     print("Warm-up do MoE (pode levar ~1 min em cold load)...", flush=True)
@@ -164,14 +186,42 @@ def summarize(outcomes: list[TaskOutcome]) -> tuple[dict[str, dict[str, Any]], b
     total = sum(d["total"] for d in summary.values())
     print("-" * 64)
     print(f"{'TOTAL':<12}{total_passed:>6}{total:>7}{100.0 * total_passed / total:>8.1f}%")
+    metrics = aggregate_metrics([o.as_dict() for o in outcomes])
+    print("-" * 64)
+    print(
+        f"task_success_rate: {metrics['task_success_rate']}%  |  "
+        f"tools/task: {metrics['tools_per_task_mean']} (média), {metrics['tools_per_task_p95']:.0f} (P95)"
+    )
     print("=" * 64)
     return summary, all_pass
+
+
+def aggregate_metrics(tasks: list[dict[str, Any]]) -> dict[str, float]:
+    """Métricas de execução do observability-plan: Task Success + Tool Call Efficiency.
+
+    - `task_success_rate`: % de tasks com `stop_reason == "answer"` (loop
+      terminou com resposta, não por max_iters/timeout/erro).
+    - `tools_per_task_mean` / `tools_per_task_p95`: chamadas de tool por task —
+      tool calling caro é problema real; P95 expõe as tasks patológicas.
+    """
+    total = len(tasks)
+    if total == 0:
+        return {"task_success_rate": 0.0, "tools_per_task_mean": 0.0, "tools_per_task_p95": 0.0}
+    success = sum(1 for t in tasks if t.get("stop_reason") == "answer")
+    tool_counts = sorted(len(t.get("tool_trace") or []) for t in tasks)
+    p95_index = max(0, math.ceil(0.95 * total) - 1)
+    return {
+        "task_success_rate": round(100.0 * success / total, 1),
+        "tools_per_task_mean": round(sum(tool_counts) / total, 2),
+        "tools_per_task_p95": float(tool_counts[p95_index]),
+    }
 
 
 def save_report(outcomes: list[TaskOutcome], summary: dict[str, dict[str, Any]]) -> Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     settings = load_settings()
     path = RESULTS_DIR / f"fase2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    tasks = [o.as_dict() for o in outcomes]
     path.write_text(
         json.dumps(
             {
@@ -180,7 +230,8 @@ def save_report(outcomes: list[TaskOutcome], summary: dict[str, dict[str, Any]])
                 "model": settings.model,
                 "gate_pct": GATE_PCT,
                 "summary": summary,
-                "tasks": [o.as_dict() for o in outcomes],
+                "metrics": aggregate_metrics(tasks),
+                "tasks": tasks,
             },
             ensure_ascii=False,
             indent=2,
@@ -193,12 +244,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Eval dos subagentes por domínio (Fase 2)")
     parser.add_argument("--domains", nargs="*", choices=DOMAINS, help="Limita a domínios específicos")
     parser.add_argument("--ids", nargs="*", help="Re-roda apenas tasks específicas (ex.: rh-03)")
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="Não reseta o estado dos serviços antes do run (default: reseta)",
+    )
     args = parser.parse_args()
 
     records = load_golden(args.domains, args.ids)
     if not records:
         print("Nenhuma task selecionada.", file=sys.stderr)
         return 2
+
+    if not args.no_reset:
+        reset_services(load_settings())
 
     started = time.monotonic()
     outcomes = run(records)

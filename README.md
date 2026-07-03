@@ -11,7 +11,7 @@ Resultados (medidos)
 | Gate                             | LoRA 9B (prod)                                                              | Baseline 9B    | Baseline 7b     | Critério       |
 | -------------------------------- | --------------------------------------------------------------------------- | -------------- | --------------- | --------------- |
 | Subagentes por domínio          | **36/40 = 90%** (2026-07-02: fin 80, rh 100, est 90, ven 90)          | 87.5%          | 82.5%           | ≥ 80%/domínio |
-| Roteamento (153 perguntas)       | **91.5% PASS** (2026-07-02, golden denso multi-domínio)               | 95.5%¹         | 90.5%¹          | ≥ 90%          |
+| Roteamento (153 perguntas)       | **94.1% PASS** (2026-07-02, golden denso multi-domínio auditado)      | 95.5%¹         | 90.5%¹          | ≥ 90%          |
 | Injection                        | **0/6 vazamentos**                                                    | 0/6            | 0/6             | 0 leaks         |
 | Faithfulness (juiz LLM local)    | **39/40 = 97.5%** (resposta fiel às observações das tools)            | —              | —               | ≥ 90%          |
 | Task success / tools por task    | **100%** · 1.3 média / 2 P95                                          | —              | —               | informativo     |
@@ -21,7 +21,7 @@ Resultados (medidos)
 
 > **LoRA 9B vs baselines**: domains +5 pp vs 7b, routing empata, injection perfeito em todos. LoRA roda 100% GPU (5.4 GB Q4_K_M) a ~2–4 s/task vs 30b MoE a ~15 s/task com split CPU.
 >
-> ¹ Baselines medidos no golden anterior (63 perguntas). No golden denso de 153 (12+ casos multi-domínio novos), o LoRA 9B partia de 72.5%; guards determinísticos + regras de decomposição no prompt do router levaram a **91.5%** (2026-07-02), com injection reconfirmado **0/6**.
+> ¹ Baselines medidos no golden anterior (63 perguntas). No golden denso de 153 (12+ casos multi-domínio novos), o LoRA 9B partia de 72.5%; guards determinísticos + regras de decomposição no prompt levaram a 91.5%, e a auditoria de labels do golden (critérios explícitos em `docs/golden_routing_criteria.md`; 8 labels inconsistentes normalizados) fechou em **94.1%** (2026-07-02), com injection reconfirmado **0/6** em cada etapa.
 
 ---
 

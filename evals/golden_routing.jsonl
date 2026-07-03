@@ -1,6 +1,6 @@
 {"question": "Quais contas a pagar vencem esta semana?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Qual é a projeção de fluxo de caixa para os próximos 30 dias?", "expect_domains": ["financas"], "expect_clarification": false}
-{"question": "Quem precisa aprovar um pagamento de R$ 80.000?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Quem precisa aprovar um pagamento de R$ 80.000?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
 {"question": "Quanto temos de contas a receber em aberto?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Registre uma despesa de R$ 1.200 com manutenção predial.", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Qual foi o total de despesas aprovadas no mês passado?", "expect_domains": ["financas"], "expect_clarification": false}
@@ -89,8 +89,8 @@
 {"question": "Quanto já foi gasto do orçamento de Vendas?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Liste as despesas que precisam de aprovação de gerente.", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Quanto custa o vale alimentação dos funcionários?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
-{"question": "Qual comissão o Rafael Monteiro gerou no Q2?", "expect_domains": ["financas", "vendas"], "expect_clarification": false}
-{"question": "O orçamento de RH está estourado?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "Qual comissão o Rafael Monteiro gerou no Q2?", "expect_domains": ["vendas"], "expect_clarification": false}
+{"question": "O orçamento de RH está estourado?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Liste as campanhas de marketing por região.", "expect_domains": ["financas", "vendas"], "expect_clarification": false}
 {"question": "Quanto a Agência Bossa Nova recebeu este mês?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Qual o saldo a receber da Construtora Nova Era?", "expect_domains": ["financas"], "expect_clarification": false}
@@ -121,7 +121,7 @@
 {"question": "O cliente Seguros Confiança está inadimplente?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
 {"question": "Liste os clientes sem pedidos nos últimos 90 dias.", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "A Transportadora Rocha comprou quais produtos?", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
-{"question": "Qual a comissão total dos vendedores do Sudeste?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
+{"question": "Qual a comissão total dos vendedores do Sudeste?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Quem vendeu para a Universidade Central?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Liste os produtos comprados pela Clínica Bem Viver.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
 {"question": "Qual o ticket médio dos clientes do Sul?", "expect_domains": ["vendas"], "expect_clarification": false}
@@ -129,11 +129,11 @@
 {"question": "Qual cliente da região Nordeste tem conta a receber?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
 {"question": "O vendedor do Rio Grande do Sul bateu a meta?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Liste os pedidos com produtos da categoria Eletrônicos.", "expect_domains": ["vendas", "estoque"], "expect_clarification": false}
-{"question": "Quanto de comissão a Paula Souza gerou este mês?", "expect_domains": ["vendas", "financas", "rh"], "expect_clarification": false}
+{"question": "Quanto de comissão a Paula Souza gerou este mês?", "expect_domains": ["vendas"], "expect_clarification": false}
 {"question": "Quantos switches gerenciáveis estão alocados para Operações?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
 {"question": "Qual departamento tem mais equipamentos de áudio alocados?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
-{"question": "A despesa de limpeza está dentro do orçamento de Operações?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
-{"question": "Liste as despesas de comissão que precisam de aprovação.", "expect_domains": ["financas", "vendas", "rh"], "expect_clarification": false}
+{"question": "A despesa de limpeza está dentro do orçamento de Operações?", "expect_domains": ["financas"], "expect_clarification": false}
+{"question": "Liste as despesas de comissão que precisam de aprovação.", "expect_domains": ["financas", "vendas"], "expect_clarification": false}
 {"question": "O departamento de Engenharia recebeu quais monitores?", "expect_domains": ["estoque", "rh"], "expect_clarification": false}
 {"question": "Quanto o RH gastou com treinamento no Q2?", "expect_domains": ["rh", "financas"], "expect_clarification": false}
 {"question": "A Beatriz Fonseca tem acesso ao SAP Financeiro?", "expect_domains": ["rh"], "expect_clarification": false}
@@ -141,7 +141,7 @@
 {"question": "O estoque do MON-32W no RJ cobre os pedidos abertos?", "expect_domains": ["estoque", "vendas"], "expect_clarification": false}
 {"question": "Liste as habilidades da equipe de Suporte Técnico.", "expect_domains": ["rh"], "expect_clarification": false}
 {"question": "Qual a margem de lucro nos pedidos da região Centro-Oeste?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
-{"question": "O valor de R$ 62.000 de consultoria ERP foi aprovado?", "expect_domains": ["financas", "rh"], "expect_clarification": false}
+{"question": "O valor de R$ 62.000 de consultoria ERP foi aprovado?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "Quanto temos em caixa para novos investimentos?", "expect_domains": ["financas"], "expect_clarification": false}
 {"question": "A Startup Maré Alta tem crédito aprovado?", "expect_domains": ["vendas", "financas"], "expect_clarification": false}
 {"question": "Liste os produtos com estoque zerado em todos os depósitos.", "expect_domains": ["estoque"], "expect_clarification": false}

@@ -366,11 +366,13 @@ def _apply_routing_guards(question: str, plan: RoutePlan) -> RoutePlan:
     ):
         plan.domains.append("vendas")  # type: ignore[arg-type]
 
-    # ── Orçamento/custo + departamento/equipe → rh TAMBÉM ────────────────
-    # Departamento/equipe é estrutura de pessoas (rh); orçamento é finanças.
+    # ── Orçamento agregado POR departamentos → rh TAMBÉM ─────────────────
+    # Departamento como mero qualificador ("orçamento de Engenharia") é só
+    # finanças (critério C3 do golden); rh entra quando a resposta exige
+    # ENUMERAR departamentos ("liste os departamentos que estouraram").
     _BUDGET_DEPT_RE = re.compile(
-        r'\borcament\w+\b.{0,60}\b(?:departament\w+|equipe|operacoes)\b'
-        r'|\b(?:departament\w+|equipe)\w*\b.{0,60}\borcament\w+'
+        r'\borcament\w+\b.{0,60}\bdepartamentos\b'
+        r'|\bdepartamentos\b.{0,60}\borcament\w+'
     )
     if _BUDGET_DEPT_RE.search(normalized) and plan.domains and "rh" not in plan.domains:
         plan.domains.append("rh")  # type: ignore[arg-type]
@@ -379,7 +381,7 @@ def _apply_routing_guards(question: str, plan: RoutePlan) -> RoutePlan:
     # Alçada é regra de finanças; QUEM aprova é cargo/pessoa (rh). Formas
     # genéricas ("despesas aprovadas", "precisam de aprovação") ficam FORA:
     # no golden são finanças puras — só a pergunta pela PESSOA envolve rh.
-    _WHO_APPROVES_RE = re.compile(r'\b(?:quem\s+aprova\w*|aprovador\w*)\b')
+    _WHO_APPROVES_RE = re.compile(r'\b(?:quem\s+(?:precisa\s+)?aprovar?\w*|aprovador\w*)\b')
     if _WHO_APPROVES_RE.search(normalized) and "credito" not in normalized and plan.domains:
         for d in ("financas", "rh"):
             if d not in plan.domains:

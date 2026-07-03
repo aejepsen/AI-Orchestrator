@@ -109,6 +109,13 @@ O §3.3 reformulado com honestidade: SVD do golden de routing (153×384) → bas
 > "Marcos Vinícius TRABALHA_EM Vendas") e implausíveis ("Notebook PERTENCE_A Periféricos"),
 > confirmando que a revisão humana é obrigatória. Zero escrita no Neo4j. PyKEEN só no venv
 > (ferramenta offline — não entra na imagem do gateway).
+>
+> **Curadoria executada** (`scripts/validate_kg_suggestions.py`, validação contra os seeds dos
+> 4 microsserviços — a fonte de verdade do projeto): **0/20 aprovadas** (19 sem evidência,
+> 1 contradiz os dados do estoque). Conclusão: o KG foi seedado a partir dos serviços e está
+> factualmente completo — link prediction não encontra fatos novos num grafo fechado e pequeno;
+> o valor da técnica apareceria em KGs com ingestão parcial/contínua. Resultado negativo
+> documentado; nenhuma aresta adicionada ao seed.
 1. Exportar triplas do Neo4j (`scripts/export_kg_triples.py`).
 2. Treinar RotatE/QuatE (PyKEEN, CPU — grafo minúsculo) com split 80/10/10 das 260 relações.
 3. Eval: MRR/Hits@10 em link prediction; gerar top-20 relações candidatas ausentes e validar manualmente contra os seeds.

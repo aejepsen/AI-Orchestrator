@@ -10,6 +10,7 @@ Saída: demo/transcripts.md + demo/transcripts.json
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ from pathlib import Path
 import httpx
 
 GATEWAY = "http://localhost:8100"
+# Fail-closed em produção: /chat exige X-Access-Token (export ou .env).
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "")
 
 CASES = [
     {
@@ -52,9 +55,12 @@ CASES = [
 
 def run_case(case: dict) -> dict:
     events: list[dict] = []
+    token_count = 0
+    first_token_s: float | None = None
     t0 = time.monotonic()
+    headers = {"X-Access-Token": ACCESS_TOKEN} if ACCESS_TOKEN else {}
     with httpx.stream(
-        "POST", f"{GATEWAY}/chat", json={"question": case["question"]}, timeout=1200
+        "POST", f"{GATEWAY}/chat", json={"question": case["question"]}, headers=headers, timeout=1200
     ) as response:
         event = None
         for line in response.iter_lines():
@@ -62,7 +68,22 @@ def run_case(case: dict) -> dict:
                 event = line.split(":", 1)[1].strip()
             elif line.startswith("data:"):
                 data = json.loads(line.split(":", 1)[1])
+                # Streaming token-a-token: agrega (93 deltas viram 1 linha).
+                if event == "token":
+                    token_count += 1
+                    if first_token_s is None:
+                        first_token_s = round(time.monotonic() - t0, 1)
+                    continue
                 events.append({"t_s": round(time.monotonic() - t0, 1), "event": event, "data": data})
+    if token_count:
+        events.append(
+            {
+                "t_s": first_token_s,
+                "event": "token_stream",
+                "data": {"tokens": token_count, "first_token_s": first_token_s},
+            }
+        )
+        events.sort(key=lambda e: e["t_s"])
     return {**case, "elapsed_s": round(time.monotonic() - t0, 1), "events": events}
 
 
@@ -70,8 +91,8 @@ def to_markdown(results: list[dict]) -> str:
     lines = [
         "# Demo — 5 conversas gravadas (SSE `/chat`)",
         "",
-        f"_Gravado em {datetime.now():%Y-%m-%d %H:%M} contra a stack local "
-        "(`docker compose up`, MoE qwen3:30b-a3b residente)._",
+        f"_Gravado em {datetime.now():%Y-%m-%d %H:%M} contra a stack de produção "
+        "(`docker compose up`, Qwen3.5-9B LoRA 100% GPU, streaming SSE token-a-token)._",
         "",
     ]
     for r in results:
@@ -85,6 +106,11 @@ def to_markdown(results: list[dict]) -> str:
                 )
             elif e["event"] == "agent":
                 lines.append(f"- `[{e['t_s']}s]` **agent[{d.get('domain')}]**: {d.get('answer')}")
+            elif e["event"] == "token_stream":
+                lines.append(
+                    f"- `[{e['t_s']}s]` **síntese em streaming**: 1º token em {d.get('first_token_s')}s, "
+                    f"{d.get('tokens')} deltas"
+                )
             elif e["event"] == "final":
                 lines.append(f"- `[{e['t_s']}s]` **final**: {d.get('answer')}")
             elif e["event"] == "error":

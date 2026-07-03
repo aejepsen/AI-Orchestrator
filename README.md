@@ -10,11 +10,14 @@ Resultados (medidos)
 
 | Gate                             | LoRA 9B (prod)                                                              | Baseline 9B    | Baseline 7b     | Critério       |
 | -------------------------------- | --------------------------------------------------------------------------- | -------------- | --------------- | --------------- |
-| Subagentes por domínio          | **35/40 = 87.5%** (fin 90, rh 90, est 90, ven 80)                    | 87.5%          | 82.5%           | ≥ 80%/domínio |
+| Subagentes por domínio          | **36/40 = 90%** (2026-07-02: fin 80, rh 100, est 90, ven 90)          | 87.5%          | 82.5%           | ≥ 80%/domínio |
 | Roteamento (153 perguntas)       | **91.5% PASS** (2026-07-02, golden denso multi-domínio)               | 95.5%¹         | 90.5%¹          | ≥ 90%          |
 | Injection                        | **0/6 vazamentos**                                                    | 0/6            | 0/6             | 0 leaks         |
-| Testes determinísticos          | **182 passando** (regras de negócio + gateway)                       | —              | —               | 100%            |
-| Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in)                       | —              | —               | funcional       |
+| Faithfulness (juiz LLM local)    | **39/40 = 97.5%** (resposta fiel às observações das tools)            | —              | —               | ≥ 90%          |
+| Task success / tools por task    | **100%** · 1.3 média / 2 P95                                          | —              | —               | informativo     |
+| OOD guard (resíduo de subespaço) | **AUC 0.980** (log-only, 27/30 OOD flagados)                          | —              | —               | ≥ 0.90          |
+| Testes determinísticos          | **410 passando** (regras de negócio + gateway + evals)               | —              | —               | 100%            |
+| Demo multi-domínio SSE          | **end-to-end OK** (3 domínios, fan-out/fan-in, streaming token-a-token) | —            | —               | funcional       |
 
 > **LoRA 9B vs baselines**: domains +5 pp vs 7b, routing empata, injection perfeito em todos. LoRA roda 100% GPU (5.4 GB Q4_K_M) a ~2–4 s/task vs 30b MoE a ~15 s/task com split CPU.
 >
@@ -244,4 +247,6 @@ Backlog (fora do escopo da PoC)
 - Registry anexar campos do schema de resposta à description da tool (resíduo estoque-03: modelo julga capacidade da tool só pela descrição).
 - RAG sobre documentos não estruturados.
 
-Implementados pós-PoC (2026-07-02): reset de estado entre runs de eval (`POST /admin/reset`), response schema na description das tools, streaming token-a-token na síntese multi-domínio (evento SSE `token` + fallback `final`), HITL seletivo por write-intent, faithfulness eval com juiz local (97.5%).
+Implementados pós-PoC (2026-07-02): reset de estado entre runs de eval (`POST /admin/reset`), response schema na description das tools, streaming token-a-token na síntese multi-domínio (evento SSE `token` + fallback `final`), HITL seletivo por write-intent, faithfulness eval com juiz local (97.5%), OOD guard por resíduo de subespaço (log-only, AUC 0.980), link prediction rotacional no KG (RotatE 3× TransE; curadoria contra os seeds dos serviços).
+
+**Rigor de engenharia — o caso CliffordNet** (`plano_cliffordNet_parecer.md`): uma proposta de substituir o pipeline de roteamento por Álgebra de Clifford foi submetida a verificação numérica antes de qualquer código. Três afirmações centrais reprovaram (produto interno nulo entre subespaços ortogonais; rotor de contexto que não gira semântica; "wedge anti-injection" que é projeção ortogonal clássica e não pega injection in-distribution). Os dois derivados válidos viraram código medido: o OOD guard (em produção) e o link prediction no KG (offline, com gate FAIL declarado onde os dados não sustentaram). Dizer não com prova numérica faz parte do padrão do projeto.

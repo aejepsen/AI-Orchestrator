@@ -161,6 +161,23 @@ class GatewayGraph:
                     examples_path=self._settings.routing_examples_path,
                     threshold=self._settings.ood_threshold,
                 )
+            # RAG docs (opt-in): políticas internas como tool de leitura para
+            # TODOS os domínios (regra é cross-domain; a tool só lê documentos).
+            if self._settings.rag_docs_enabled:
+                from gateway.config import DOMAINS
+                from gateway.document_search import DocumentSearch, get_search_tool_spec
+
+                document_search = DocumentSearch(
+                    self._settings.qdrant_url,
+                    embedder,
+                    api_key=self._settings.qdrant_api_key,
+                )
+                runner.registry.register_virtual_tool(
+                    DOMAINS,
+                    get_search_tool_spec(),
+                    lambda args: document_search.search(args.get("query", "")),
+                )
+                logger.info("RAG docs: search_documents registrada para %s", DOMAINS)
         self._semantic = semantic
         self._tracer = tracer
 

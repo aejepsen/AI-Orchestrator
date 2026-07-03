@@ -76,6 +76,11 @@ class Settings:
         default_factory=lambda: os.environ.get("HYBRID_RETRIEVAL_ENABLED", "0") not in ("0", "false", "False")
     )
     rrf_k: int = field(default_factory=lambda: int(os.environ.get("RRF_K", "60")))
+    # RAG docs: tool virtual search_documents sobre docs/policies/*.md no
+    # Qdrant (collection `documents`; ingestão: scripts/ingest_documents.py).
+    rag_docs_enabled: bool = field(
+        default_factory=lambda: os.environ.get("RAG_DOCS_ENABLED", "0") not in ("0", "false", "False")
+    )
     # Semiose — S4 (GraphRAG mínimo): tool virtual summarize_community servindo
     # resumos de comunidade pré-gerados (scripts/build_kg_communities.py).
     graphrag_enabled: bool = field(

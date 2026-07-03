@@ -25,7 +25,7 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 - ~~**Reset de estado dos serviços entre runs de eval**~~ ✅ 2026-07-02 — `POST /admin/reset` (common.py + 4 mains) + reset automático no eval_domains.
 - ~~**Registry anexar response schema à description da tool**~~ ✅ 2026-07-02 — `_response_summary()` em registry.py.
 - ~~**Streaming token-a-token na síntese**~~ ✅ 2026-07-02 — `chat_stream` + `on_token` + evento SSE `token`; frontend com balão streaming.
-- **RAG sobre documentos não estruturados** — extensão maior; abriria 5º domínio.
+- ~~**RAG sobre documentos não estruturados**~~ ✅ 2026-07-02 — políticas internas via `search_documents` (Recall@3 100%); não abriu 5º domínio: política é leitura cross-domain servida como tool aos 4 agentes.
 
 ### 3. HITL — write-intent detection (Fase 6, residual)
 
@@ -64,5 +64,5 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 6. **Experimentais:**
    - ~~**S5 multi-query expansion**~~ ✅ implementado e medido 2026-07-02 — **default OFF por medição**: no threshold de prod (0.92) acurácia idêntica (94.1%), camada semântica segue 0 disparos em leave-one-out, latência média 2× (1.09→2.32s: cada miss paga 1 chamada LLM de expansão antes do fallback, que já custava 1 chamada). Flag `MULTI_QUERY_ENABLED` fica disponível p/ quando o embedder for trocado.
    - ~~**S4 GraphRAG mínimo**~~ ✅ 2026-07-02 — Louvain offline (`scripts/build_kg_communities.py`, 11 comunidades, modularity 0.618) + resumos LLM grounded por comunidade + tool virtual `summarize_community` (opt-in `GRAPHRAG_ENABLED=1`; serve artefato pré-gerado, zero Neo4j/LLM no caminho da request). Artefato em `./models/kg_communities.json` (volume, fora do git).
-   - **RAG docs** — abaixo.
+   - ~~**RAG docs (políticas internas)**~~ ✅ 2026-07-02 — corpus `docs/policies/*.md` (5 políticas derivadas das regras REAIS dos serviços — não podem contradizer a API), chunking por seção + SBERT + Qdrant collection `documents` (`scripts/ingest_documents.py`, idempotente), tool virtual `search_documents` para os 4 domínios (opt-in `RAG_DOCS_ENABLED=1`). **Medido: Recall@3 = 12/12 = 100% PASS** (`evals/eval_docs.py`, gate 80%).
 7. ~~**Routing no golden 153**~~ ✅ **CONCLUÍDO 2026-07-02** — 72.5% → **91.5% PASS** (gate 90%) via guards determinísticos (bug fornecedor re-add, conceito financeiro→+financas, quem-aprova→fin+rh, comprou→estoque+vendas, vendedor-região→vendas) + regras de decomposição no prompt (CUSTO É FINANÇAS c/ exceção produto, PERFIL DO FUNCIONÁRIO É RH, preferir rotear a clarificar). Injection reconfirmado 0/6. README atualizado. Resíduo (~8.5%): ruído de label do golden denso — **auditoria executada 2026-07-02**: critérios explícitos em `docs/golden_routing_criteria.md` (C1 comissão, C2 aprovação, C3 orçamento×departamento, C4 vendedor×região, C5 compra), 8 labels normalizados, 2 guards afinados → **94.1% PASS**, injection 0/6.

@@ -51,6 +51,15 @@ services:
       - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
       - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-1}
       - SEMANTIC_THRESHOLD=${SEMANTIC_THRESHOLD:-0.92}
+      # Flags de features 2026-07-02 (compose só repassa env LISTADAS aqui —
+      # flag nova no .env sem linha correspondente NÃO chega ao container).
+      - HITL_ENABLED=${HITL_ENABLED:-0}
+      - OOD_GUARD_ENABLED=${OOD_GUARD_ENABLED:-1}
+      - OOD_THRESHOLD=${OOD_THRESHOLD:-0.48}
+      - HYBRID_RETRIEVAL_ENABLED=${HYBRID_RETRIEVAL_ENABLED:-0}
+      - MULTI_QUERY_ENABLED=${MULTI_QUERY_ENABLED:-0}
+      - GRAPHRAG_ENABLED=${GRAPHRAG_ENABLED:-0}
+      - RAG_DOCS_ENABLED=${RAG_DOCS_ENABLED:-0}
       # SBERT: embeddings locais em CPU (substitui nomic-embed-text no Ollama).
       - SBERT_MODEL=${SBERT_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       - SBERT_CACHE_DIR=/app/models

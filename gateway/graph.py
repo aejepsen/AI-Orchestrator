@@ -184,6 +184,22 @@ class GatewayGraph:
                 )
                 logger.info("KnowledgeGraph: expand_context registrada para %s", graph_enabled_domains())
 
+        # S4 — GraphRAG mínimo (opt-in): resumos de comunidade pré-gerados.
+        # Independente do Neo4j em runtime — serve artefato offline.
+        if self._settings and self._settings.graphrag_enabled:
+            from gateway.community_summaries import CommunityIndex, get_summarize_tool_spec
+
+            community_index = CommunityIndex(self._settings.graphrag_communities_path)
+            if community_index.available:
+                runner.registry.register_virtual_tool(
+                    graph_enabled_domains(),
+                    get_summarize_tool_spec(),
+                    lambda args: community_index.lookup(
+                        entity=args.get("entity", ""), domain=args.get("domain", "")
+                    ),
+                )
+                logger.info("GraphRAG: summarize_community registrada para %s", graph_enabled_domains())
+
         # Injection Detector (BERTimbau). Fallback regex se indisponível.
         self._injection_detector = None
         if self._settings and self._settings.injection_detector_enabled:

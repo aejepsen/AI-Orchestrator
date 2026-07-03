@@ -76,6 +76,14 @@ class Settings:
         default_factory=lambda: os.environ.get("HYBRID_RETRIEVAL_ENABLED", "0") not in ("0", "false", "False")
     )
     rrf_k: int = field(default_factory=lambda: int(os.environ.get("RRF_K", "60")))
+    # Semiose — S4 (GraphRAG mínimo): tool virtual summarize_community servindo
+    # resumos de comunidade pré-gerados (scripts/build_kg_communities.py).
+    graphrag_enabled: bool = field(
+        default_factory=lambda: os.environ.get("GRAPHRAG_ENABLED", "0") not in ("0", "false", "False")
+    )
+    graphrag_communities_path: str = field(
+        default_factory=lambda: os.environ.get("GRAPHRAG_COMMUNITIES_PATH", "/app/models/kg_communities.json")
+    )
     # Semiose — S5: multi-query expansion no router (opt-in, modo Model).
     # No MISS do consenso, expande a pergunta em N variantes via LLM e tenta
     # cada uma pelos mesmos gates. Custo ~1 chamada LLM por miss.

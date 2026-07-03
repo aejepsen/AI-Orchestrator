@@ -76,6 +76,13 @@ class Settings:
         default_factory=lambda: os.environ.get("HYBRID_RETRIEVAL_ENABLED", "0") not in ("0", "false", "False")
     )
     rrf_k: int = field(default_factory=lambda: int(os.environ.get("RRF_K", "60")))
+    # Semiose — S5: multi-query expansion no router (opt-in, modo Model).
+    # No MISS do consenso, expande a pergunta em N variantes via LLM e tenta
+    # cada uma pelos mesmos gates. Custo ~1 chamada LLM por miss.
+    multi_query_enabled: bool = field(
+        default_factory=lambda: os.environ.get("MULTI_QUERY_ENABLED", "0") not in ("0", "false", "False")
+    )
+    multi_query_n: int = field(default_factory=lambda: int(os.environ.get("MULTI_QUERY_N", "2")))
     routing_examples_path: str = field(
         default_factory=lambda: os.environ.get("ROUTING_EXAMPLES_PATH", "evals/golden_routing.jsonl")
     )

@@ -84,6 +84,8 @@ class SemanticRouter:
         cross_encoder: Any = None,
         hybrid_retrieval: bool = False,
         rrf_k: int = RRF_K,
+        query_expander: "Callable[[str], list[str]] | None" = None,
+        multi_query_n: int = 2,
         client: httpx.Client | None = None,
         api_key: str | None = None,
     ) -> None:
@@ -105,6 +107,10 @@ class SemanticRouter:
         self._rrf_k = rrf_k
         self._bm25: BM25Index | None = None
         self._bm25_questions: list[str] = []
+        # S5 — multi-query expansion (opt-in): expansor LLM injetável, usado
+        # apenas quando a tentativa primária não fecha consenso.
+        self._query_expander = query_expander
+        self._multi_query_n = multi_query_n
         headers = {"api-key": api_key} if api_key else {}
         self._client = client or httpx.Client(timeout=10.0, headers=headers)
         self._ready = False
@@ -198,6 +204,44 @@ class SemanticRouter:
         context_domain: str | None = None,
     ) -> RoutePlan | None:
         """Rota por similaridade ou None (sem consenso/infra fora → LLM decide).
+
+        S5 — multi-query (opt-in): no MISS da tentativa primária, expande a
+        pergunta em N variantes via LLM e tenta cada uma pelos MESMOS gates.
+        Custa ~1 chamada LLM — mesmo custo do fallback classifier, mas mantém
+        a decisão no consenso determinístico do router.
+        """
+        plan = self._route_single(
+            question, exclude_question=exclude_question, context_domain=context_domain
+        )
+        if plan is not None or self._query_expander is None:
+            return plan
+        try:
+            variants = [
+                v.strip()
+                for v in self._query_expander(question)
+                if v and v.strip() and v.strip().casefold() != question.strip().casefold()
+            ][: self._multi_query_n]
+        except Exception as exc:  # noqa: BLE001 — expansão é opcional, nunca derruba
+            logger.warning("multi-query expander falhou (%s) — fallback LLM", exc)
+            return None
+        for variant in variants:
+            plan = self._route_single(
+                variant, exclude_question=exclude_question, context_domain=context_domain
+            )
+            if plan is not None:
+                plan.plan += f' [multi-query: variante "{variant[:60]}"]'
+                logger.debug("semantic_router: multi-query resolveu via variante")
+                return plan
+        return None
+
+    def _route_single(
+        self,
+        question: str,
+        *,
+        exclude_question: str | None = None,
+        context_domain: str | None = None,
+    ) -> RoutePlan | None:
+        """Uma tentativa de roteamento: busca + gates (threshold/gap/consenso).
 
         `exclude_question` remove um exemplo do resultado — usado pelo eval
         em leave-one-out para não casar consigo mesmo.

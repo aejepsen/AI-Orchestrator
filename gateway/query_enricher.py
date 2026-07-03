@@ -15,12 +15,37 @@ Princípios:
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
 from gateway.router import _DOMAIN_KEYWORDS, _normalize
+
+# S5 — Multi-query expansion (modo LLM, opt-in via MULTI_QUERY_ENABLED).
+_MULTI_QUERY_SYSTEM = """Você reformula perguntas corporativas para busca semântica.
+Gere {n} reformulações CURTAS da pergunta do usuário que preservem exatamente a
+intenção e TODAS as entidades (nomes, SKUs, valores, datas, departamentos).
+Não responda a pergunta. Não adicione informação nova.
+Responda APENAS JSON: {{"variants": ["...", "..."]}}"""
+
+
+def expand_query_llm(llm: Any, question: str, *, n: int = 2) -> list[str]:
+    """N paráfrases da pergunta via LLM local (S5). Lança em falha — o caller
+    (SemanticRouter.route) trata como opcional e cai no fallback."""
+    response = llm.chat(
+        [
+            {"role": "system", "content": _MULTI_QUERY_SYSTEM.format(n=n)},
+            {"role": "user", "content": question},
+        ],
+        format="json",
+    )
+    data = json.loads(response.content)
+    variants = data.get("variants")
+    if not isinstance(variants, list):
+        raise ValueError(f"expansão sem campo 'variants': {response.content[:120]!r}")
+    return [str(v) for v in variants][:n]
 
 # ---------------------------------------------------------------------------
 # Regex de entidades estruturadas (patterns conhecidos dos 4 domínios)

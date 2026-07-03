@@ -130,6 +130,13 @@ class GatewayGraph:
                 embedder = OllamaEmbedder(self._llm, model=self._settings.embed_model)
                 logger.info("Embedder: OllamaEmbedder fallback (%s)", self._settings.embed_model)
 
+            query_expander = None
+            if self._settings.multi_query_enabled:
+                from gateway.query_enricher import expand_query_llm
+
+                query_expander = lambda q: expand_query_llm(  # noqa: E731
+                    self._llm, q, n=self._settings.multi_query_n
+                )
             semantic = SemanticRouter(
                 self._settings.qdrant_url,
                 embedder,
@@ -142,6 +149,8 @@ class GatewayGraph:
                 cross_encoder_model=self._settings.cross_encoder_model,
                 hybrid_retrieval=self._settings.hybrid_retrieval_enabled,
                 rrf_k=self._settings.rrf_k,
+                query_expander=query_expander,
+                multi_query_n=self._settings.multi_query_n,
                 api_key=self._settings.qdrant_api_key,
             )
             if self._settings.ood_guard_enabled:

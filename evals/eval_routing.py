@@ -26,7 +26,7 @@ from gateway.config import load_settings  # noqa: E402
 from gateway.embedder import SBERTEmbedder  # noqa: E402
 from gateway.knowledge_graph import KnowledgeGraph  # noqa: E402
 from gateway.llm import OllamaClient  # noqa: E402
-from gateway.query_enricher import ContextSignal, _regex_extract, enrich_query  # noqa: E402
+from gateway.query_enricher import ContextSignal, _regex_extract, enrich_query, expand_query_llm  # noqa: E402
 from gateway.router import RoutePlan, classify_intent  # noqa: E402
 from gateway.semantic_router import SemanticRouter  # noqa: E402
 
@@ -93,6 +93,12 @@ def main() -> int:
             cross_encoder_model=settings.cross_encoder_model,
             hybrid_retrieval=settings.hybrid_retrieval_enabled,
             rrf_k=settings.rrf_k,
+            query_expander=(
+                (lambda q: expand_query_llm(llm, q, n=settings.multi_query_n))
+                if settings.multi_query_enabled
+                else None
+            ),
+            multi_query_n=settings.multi_query_n,
             api_key=settings.qdrant_api_key,
         )
         semantic.ensure_ready()

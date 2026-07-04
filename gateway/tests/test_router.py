@@ -19,7 +19,7 @@ class FakeLLM:
         self._contents = list(contents)
         self.calls: list[dict[str, Any]] = []
 
-    def chat(self, messages, *, tools=None, temperature=0.0, format=None) -> ChatResponse:
+    def chat(self, messages, *, tools=None, temperature=0.0, format=None, trace=None) -> ChatResponse:
         self.calls.append({"messages": list(messages), "format": format})
         if not self._contents:
             raise AssertionError("FakeLLM sem respostas restantes")

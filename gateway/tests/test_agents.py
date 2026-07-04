@@ -19,7 +19,7 @@ class FakeLLM:
         self._responses = list(responses)
         self.calls: list[list[dict[str, Any]]] = []
 
-    def chat(self, messages: list[dict[str, Any]], *, tools: Any = None, temperature: float = 0.0) -> ChatResponse:
+    def chat(self, messages: list[dict[str, Any]], *, tools: Any = None, temperature: float = 0.0, trace: Any = None) -> ChatResponse:
         self.calls.append([dict(m) for m in messages])
         return self._responses.pop(0)
 

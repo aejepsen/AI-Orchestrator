@@ -285,6 +285,15 @@ class GatewayGraph:
                         self._ood_guard.threshold,
                         state["question"][:120],
                     )
+        # Metadata no TRACE (não no span): é de onde /metrics agrega.
+        if trace:
+            meta: dict[str, Any] = {}
+            if update.get("_injection_suspect"):
+                meta["injection_blocked"] = True
+            if update.get("_ood_residual") is not None:
+                meta["ood_residual"] = round(float(update["_ood_residual"]), 4)
+            if meta:
+                trace.update(metadata=meta)
         _log_node({**state, **update}, "sanitize", started, domains=[])
         if span:
             span.end()
@@ -354,8 +363,14 @@ class GatewayGraph:
         route = classify_intent(
             state["sanitized"], self._llm, semantic=self._semantic,
             context_domain=context_domain, enriched=was_enriched,
+            trace=trace,
         )
         update: GraphState = {"route": route.model_dump()}
+        # routing_layer no metadata do TRACE — /metrics classifica por aqui.
+        if trace:
+            trace.update(
+                metadata={"routing_layer": route.layer or "llm", "domains": list(route.domains)}
+            )
         _log_node({**state, **update}, "classify", started)
         if span:
             span.end()
@@ -370,6 +385,10 @@ class GatewayGraph:
             "final_answer": answer,
             "agent_results": {},
         }
+        # Roteador não achou domínio → clarification. Metadata alimenta as
+        # métricas live Clarification Rate e Routing Failure Rate.
+        if trace:
+            trace.update(metadata={"clarification": True})
         _log_node(state, "respond_clarification", started, domains=[])
         if span:
             span.end()
@@ -479,7 +498,7 @@ class GatewayGraph:
 
         def run_one(domain: str) -> tuple[str, dict[str, Any]]:
             try:
-                result = self._runner.run(domain, task)
+                result = self._runner.run(domain, task, lf_trace=trace)
                 payload = {"answer": result.final_answer, "trace": result.trace_as_dicts()}
             except Exception as exc:  # noqa: BLE001 — falha de um agente não derruba o fan-out
                 logger.exception("Agente %s falhou: %s", domain, exc)
@@ -493,6 +512,10 @@ class GatewayGraph:
         else:
             with ThreadPoolExecutor(max_workers=len(domains)) as pool:
                 results = dict(pool.map(run_one, domains))
+        # tools_used no metadata do trace → Tool Call Efficiency live.
+        if trace:
+            total_tools = sum(len(payload.get("trace", [])) for payload in results.values())
+            trace.update(metadata={"tools_used": total_tools})
         _log_node(state, "dispatch", started, domains=domains)
         if span:
             span.end()
@@ -528,6 +551,8 @@ class GatewayGraph:
             else:
                 response = self._llm.chat(messages, trace=trace)
             answer = response.content
+            if trace and response.ttft_ms is not None:
+                trace.update(metadata={"ttft_ms": response.ttft_ms})
 
         # Acumula histórico conversacional.
         history = list(state.get("history") or [])

@@ -12,10 +12,13 @@ Decisões de latência (medições da Fase 0 e eval da Fase 2):
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import httpx
+
+from gateway import otel
 
 
 class LLMError(RuntimeError):
@@ -32,6 +35,11 @@ class ToolCall:
 class ChatResponse:
     content: str
     tool_calls: tuple[ToolCall, ...] = field(default_factory=tuple)
+    # Usage reportado pelo Ollama (prompt_eval_count / eval_count).
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Streaming: tempo até o primeiro token (ms); None fora do streaming.
+    ttft_ms: float | None = None
 
     @property
     def has_tool_calls(self) -> bool:
@@ -87,17 +95,30 @@ class OllamaClient:
                 input={"texts_count": len(texts)},
             )
         payload = {"model": model, "input": texts, "keep_alive": self._keep_alive}
+        started = time.perf_counter()
         try:
             response = self._client.post(f"{self._base_url}/api/embed", json=payload)
             response.raise_for_status()
         except httpx.HTTPError as exc:
+            otel.record_llm_call(
+                operation="embeddings", model=model,
+                duration_s=time.perf_counter() - started, error=type(exc).__name__,
+            )
             raise LLMError(f"Falha no embedding via Ollama ({self._base_url}): {exc}") from exc
         data = response.json()
         embeddings = data.get("embeddings")
         if not isinstance(embeddings, list) or len(embeddings) != len(texts):
             raise LLMError(f"Resposta de /api/embed malformada: {data!r}")
+        input_tokens = int(data.get("prompt_eval_count") or 0)
+        otel.record_llm_call(
+            operation="embeddings", model=model,
+            duration_s=time.perf_counter() - started, input_tokens=input_tokens,
+        )
         if gen:
-            gen.end(output={"embeddings_count": len(embeddings)})
+            gen.end(
+                output={"embeddings_count": len(embeddings)},
+                usage={"input": input_tokens, "unit": "TOKENS"} if input_tokens else None,
+            )
         return embeddings
 
     def chat(
@@ -130,10 +151,15 @@ class OllamaClient:
             payload["tools"] = tools
         if format is not None:
             payload["format"] = format
+        started = time.perf_counter()
         try:
             response = self._client.post(f"{self._base_url}/api/chat", json=payload)
             response.raise_for_status()
         except httpx.HTTPError as exc:
+            otel.record_llm_call(
+                operation="chat", model=self._model, temperature=temperature,
+                duration_s=time.perf_counter() - started, error=type(exc).__name__,
+            )
             raise LLMError(f"Falha na chamada ao Ollama ({self._base_url}): {exc}") from exc
 
         data = response.json()
@@ -142,11 +168,28 @@ class OllamaClient:
             raise LLMError(f"Resposta do Ollama sem campo 'message': {data!r}")
         response_content = (message.get("content") or "").strip()
         raw_tool_calls = _parse_tool_calls(message.get("tool_calls") or [])
+        input_tokens = int(data.get("prompt_eval_count") or 0)
+        output_tokens = int(data.get("eval_count") or 0)
+        otel.record_llm_call(
+            operation="chat", model=self._model, temperature=temperature,
+            duration_s=time.perf_counter() - started,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            finish_reason="tool_calls" if raw_tool_calls else "stop",
+        )
         if gen:
-            gen.end(output={"content": response_content, "tool_calls": len(raw_tool_calls)})
+            gen.end(
+                output={"content": response_content, "tool_calls": len(raw_tool_calls)},
+                usage=(
+                    {"input": input_tokens, "output": output_tokens, "unit": "TOKENS"}
+                    if input_tokens or output_tokens
+                    else None
+                ),
+            )
         return ChatResponse(
             content=response_content,
             tool_calls=raw_tool_calls,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     def chat_stream(
@@ -180,6 +223,10 @@ class OllamaClient:
             "options": {"temperature": temperature},
         }
         parts: list[str] = []
+        started = time.perf_counter()
+        first_token_at: float | None = None
+        input_tokens = 0
+        output_tokens = 0
         try:
             with self._client.stream("POST", f"{self._base_url}/api/chat", json=payload) as response:
                 response.raise_for_status()
@@ -192,13 +239,42 @@ class OllamaClient:
                         raise LLMError(f"Chunk NDJSON inválido do Ollama: {line[:200]!r}") from exc
                     delta = (chunk.get("message") or {}).get("content") or ""
                     if delta:
+                        if first_token_at is None:
+                            first_token_at = time.perf_counter()
                         parts.append(delta)
                         on_token(delta)
                     if chunk.get("done"):
+                        # Chunk final carrega o usage da geração inteira.
+                        input_tokens = int(chunk.get("prompt_eval_count") or 0)
+                        output_tokens = int(chunk.get("eval_count") or 0)
                         break
         except httpx.HTTPError as exc:
+            otel.record_llm_call(
+                operation="chat", model=self._model, temperature=temperature,
+                duration_s=time.perf_counter() - started, error=type(exc).__name__,
+            )
             raise LLMError(f"Falha no streaming ao Ollama ({self._base_url}): {exc}") from exc
         content = "".join(parts).strip()
+        ttft_s = (first_token_at - started) if first_token_at is not None else None
+        otel.record_llm_call(
+            operation="chat", model=self._model, temperature=temperature,
+            duration_s=time.perf_counter() - started,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            finish_reason="stop", ttft_s=ttft_s,
+        )
         if gen:
-            gen.end(output={"content": content})
-        return ChatResponse(content=content, tool_calls=())
+            gen.end(
+                output={"content": content},
+                usage=(
+                    {"input": input_tokens, "output": output_tokens, "unit": "TOKENS"}
+                    if input_tokens or output_tokens
+                    else None
+                ),
+            )
+        return ChatResponse(
+            content=content,
+            tool_calls=(),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            ttft_ms=round(ttft_s * 1000, 1) if ttft_s is not None else None,
+        )

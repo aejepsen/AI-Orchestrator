@@ -27,7 +27,7 @@ class FakeRunner:
         self._answers = answers
         self.tasks: dict[str, str] = {}
 
-    def run(self, domain: str, task: str, *, max_iters: int | None = None) -> AgentResult:
+    def run(self, domain: str, task: str, *, max_iters: int | None = None, lf_trace=None) -> AgentResult:
         self.tasks[domain] = task
         if domain == "__boom__":
             raise RuntimeError("falha simulada")
@@ -115,7 +115,7 @@ def test_falha_de_um_agente_nao_derruba_fan_out():
     llm = FakeLLM(_route_json(["rh", "financas"]), "Síntese com falha parcial.")
     runner = FakeRunner({"financas": "Caixa ok."})
 
-    def boom(domain: str, task: str, *, max_iters: int | None = None) -> AgentResult:
+    def boom(domain: str, task: str, *, max_iters: int | None = None, lf_trace=None) -> AgentResult:
         runner.tasks[domain] = task
         if domain == "rh":
             raise RuntimeError("serviço fora do ar")

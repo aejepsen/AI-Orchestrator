@@ -1,23 +1,31 @@
-"""Agregador de métricas Langfuse com cache e degradação graceful.
+"""Agregador de métricas Langfuse + OTel com cache e degradação graceful.
 
-Consulta traces via SDK Python, agrega latência (avg/p50/p95), tokens,
-contagem por routing layer e injection blocks. Cache de 30s evita
-sobrecarga no Langfuse.
+Duas fontes independentes:
+- Langfuse: traces (latência avg/p50/p95, routing layer, injection, TTFT,
+  OOD) + observations do tipo GENERATION (tokens — o usage vive na
+  generation, NÃO no trace; ler trace.usage sempre retorna vazio no v2).
+- OTel Collector: métricas gen_ai.* raspadas do exporter Prometheus
+  (:8889). Verificação cruzada dos mesmos números por pipeline distinto.
+
+Cache de 10s mantém o dashboard quase-live sem sobrecarregar o Langfuse.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import statistics
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from gateway.config import Settings
 
 logger = logging.getLogger("gateway")
 
-_CACHE_TTL_S = 30.0
+_CACHE_TTL_S = 10.0
 
 
 @dataclass
@@ -37,6 +45,7 @@ class MetricsCollector:
         self._enabled = settings.langfuse_enabled
         self._langfuse = None
         self._cache = _CachedMetrics()
+        self._otel_prom_endpoint = settings.otel_prom_endpoint if settings.otel_enabled else ""
 
         if not self._enabled:
             return
@@ -53,26 +62,30 @@ class MetricsCollector:
             self._enabled = False
 
     def collect(self) -> dict[str, Any]:
-        """Retorna métricas agregadas. Cache de 30s."""
-        if not self._enabled or self._langfuse is None:
-            return _empty_metrics(available=False)
-
-        if not self._cache.expired:
+        """Retorna métricas agregadas (Langfuse + OTel). Cache de 10s."""
+        if not self._cache.expired and self._cache.data:
             return self._cache.data
 
-        try:
-            result = self._fetch_and_aggregate()
-            self._cache = _CachedMetrics(data=result, fetched_at=time.monotonic())
-            return result
-        except Exception as exc:
-            logger.warning("MetricsCollector: falha ao coletar: %s", exc)
-            # Se tem cache antigo, retorna ele com flag stale
-            if self._cache.data:
-                return {**self._cache.data, "stale": True}
-            return _empty_metrics(available=False)
+        if self._enabled and self._langfuse is not None:
+            try:
+                result = self._fetch_and_aggregate()
+            except Exception as exc:
+                logger.warning("MetricsCollector: falha ao coletar: %s", exc)
+                # Se tem cache antigo, retorna ele com flag stale
+                if self._cache.data:
+                    return {**self._cache.data, "stale": True}
+                result = _empty_metrics(available=False)
+        else:
+            result = _empty_metrics(available=False)
+
+        # Fonte independente: métricas gen_ai.* do OTel Collector.
+        result["otel"] = self._fetch_otel_summary()
+
+        self._cache = _CachedMetrics(data=result, fetched_at=time.monotonic())
+        return result
 
     def _fetch_and_aggregate(self) -> dict[str, Any]:
-        """Busca traces recentes e agrega métricas."""
+        """Busca traces + generations recentes e agrega métricas."""
         traces_response = self._langfuse.fetch_traces(limit=100)  # type: ignore[union-attr]
         traces = traces_response.data if hasattr(traces_response, "data") else []
 
@@ -80,11 +93,13 @@ class MetricsCollector:
             return _empty_metrics(available=True)
 
         latencies: list[float] = []
-        tokens_input = 0
-        tokens_output = 0
+        ttfts: list[float] = []
+        ood_residuals: list[float] = []
+        tools_used: list[int] = []
         route_semantic = 0
         route_llm = 0
         injection_blocks = 0
+        clarifications = 0
         error_count = 0
 
         for trace in traces:
@@ -93,27 +108,35 @@ class MetricsCollector:
             if latency is not None and latency > 0:
                 latencies.append(latency)
 
-            # Tokens — extrair do usage do trace ou metadata
-            usage = _safe_attr(trace, "usage")
-            if usage:
-                tokens_input += _safe_int(usage, "input", 0) or _safe_int(usage, "promptTokens", 0)
-                tokens_output += _safe_int(usage, "output", 0) or _safe_int(usage, "completionTokens", 0)
-
-            # Metadata com info de routing
+            # Metadata com routing, injection, TTFT e OOD (gravados pelo graph)
             metadata = _safe_attr(trace, "metadata") or {}
             if isinstance(metadata, dict):
                 layer = metadata.get("routing_layer", "")
                 if layer == "semantic":
                     route_semantic += 1
-                elif layer == "llm":
+                elif layer in ("llm", "lexical"):
                     route_llm += 1
                 if metadata.get("injection_blocked"):
                     injection_blocks += 1
+                if metadata.get("clarification"):
+                    clarifications += 1
+                tools = metadata.get("tools_used")
+                if isinstance(tools, (int, float)):
+                    tools_used.append(int(tools))
+                ttft = metadata.get("ttft_ms")
+                if isinstance(ttft, (int, float)) and ttft > 0:
+                    ttfts.append(float(ttft))
+                ood = metadata.get("ood_residual")
+                if isinstance(ood, (int, float)):
+                    ood_residuals.append(float(ood))
 
             # Erros
             level = _safe_attr(trace, "level")
             if level and str(level).upper() == "ERROR":
                 error_count += 1
+
+        # Tokens: usage vive nas GENERATIONS (observations), não no trace.
+        tokens_input, tokens_output, generations = self._fetch_generation_usage()
 
         # Calcular percentis
         avg_latency = statistics.mean(latencies) if latencies else 0.0
@@ -134,15 +157,67 @@ class MetricsCollector:
                 "input": tokens_input,
                 "output": tokens_output,
                 "total": tokens_input + tokens_output,
+                "generations": generations,
+            },
+            "ttft": {
+                "avg_ms": round(statistics.mean(ttfts), 1) if ttfts else 0,
+                "p95_ms": round(_percentile(ttfts, 0.95), 1) if ttfts else 0,
+                "sample_size": len(ttfts),
+            },
+            "ood": {
+                "avg_residual": round(statistics.mean(ood_residuals), 4) if ood_residuals else 0,
+                "max_residual": round(max(ood_residuals), 4) if ood_residuals else 0,
+                "sample_size": len(ood_residuals),
             },
             "routing": {
                 "semantic": route_semantic,
                 "llm": route_llm,
                 "unclassified": len(traces) - route_semantic - route_llm,
             },
+            "tools": {
+                "avg_per_task": round(statistics.mean(tools_used), 2) if tools_used else 0,
+                "sample_size": len(tools_used),
+            },
+            "clarifications": clarifications,
             "injection_blocks": injection_blocks,
             "error_count": error_count,
         }
+
+    def _fetch_generation_usage(self) -> tuple[int, int, int]:
+        """Soma tokens das últimas generations (input, output, contagem)."""
+        tokens_input = 0
+        tokens_output = 0
+        generations = 0
+        try:
+            obs_response = self._langfuse.fetch_observations(  # type: ignore[union-attr]
+                type="GENERATION", limit=100
+            )
+            observations = obs_response.data if hasattr(obs_response, "data") else []
+            for obs in observations:
+                usage = _safe_attr(obs, "usage")
+                if not usage:
+                    continue
+                inp = _safe_int(usage, "input", 0) or _safe_int(usage, "promptTokens", 0)
+                out = _safe_int(usage, "output", 0) or _safe_int(usage, "completionTokens", 0)
+                if inp or out:
+                    generations += 1
+                tokens_input += inp
+                tokens_output += out
+        except Exception as exc:
+            logger.warning("MetricsCollector: falha ao buscar observations: %s", exc)
+        return tokens_input, tokens_output, generations
+
+    def _fetch_otel_summary(self) -> dict[str, Any]:
+        """Raspa o exporter Prometheus do Collector e resume as métricas gen_ai.*."""
+        if not self._otel_prom_endpoint:
+            return {"available": False}
+        try:
+            resp = httpx.get(self._otel_prom_endpoint, timeout=3.0)
+            resp.raise_for_status()
+            return _parse_genai_prometheus(resp.text)
+        except Exception as exc:
+            logger.warning("MetricsCollector: OTel Collector inacessível: %s", exc)
+            return {"available": False}
 
 
 def _empty_metrics(*, available: bool) -> dict[str, Any]:
@@ -151,10 +226,65 @@ def _empty_metrics(*, available: bool) -> dict[str, Any]:
         "stale": False,
         "total_traces": 0,
         "latency": {"avg_ms": 0, "p50_ms": 0, "p95_ms": 0, "sample_size": 0},
-        "tokens": {"input": 0, "output": 0, "total": 0},
+        "tokens": {"input": 0, "output": 0, "total": 0, "generations": 0},
+        "ttft": {"avg_ms": 0, "p95_ms": 0, "sample_size": 0},
+        "ood": {"avg_residual": 0, "max_residual": 0, "sample_size": 0},
         "routing": {"semantic": 0, "llm": 0, "unclassified": 0},
+        "tools": {"avg_per_task": 0, "sample_size": 0},
+        "clarifications": 0,
         "injection_blocks": 0,
         "error_count": 0,
+    }
+
+
+# Linha Prometheus: nome{labels} valor — só nos importam as gen_ai_*.
+_PROM_LINE_RE = re.compile(r'^(gen_ai_[a-z_]+)(?:\{([^}]*)\})?\s+([0-9.e+-]+)\s*$')
+
+
+def _parse_genai_prometheus(text: str) -> dict[str, Any]:
+    """Resume o texto Prometheus do Collector em contadores gen_ai.*."""
+    tokens_input = 0.0
+    tokens_output = 0.0
+    llm_calls = 0.0
+    duration_sum = 0.0
+    ttft_sum = 0.0
+    ttft_count = 0.0
+
+    for line in text.splitlines():
+        match = _PROM_LINE_RE.match(line.strip())
+        if not match:
+            continue
+        name, labels, value_raw = match.group(1), match.group(2) or "", match.group(3)
+        try:
+            value = float(value_raw)
+        except ValueError:
+            continue
+        # O exporter Prometheus adiciona sufixo de unidade ("_seconds") ao
+        # histograma de duração; o de tokens ({token}) fica sem sufixo.
+        if name == "gen_ai_client_token_usage_sum":
+            if 'gen_ai_token_type="input"' in labels:
+                tokens_input += value
+            elif 'gen_ai_token_type="output"' in labels:
+                tokens_output += value
+        elif name in ("gen_ai_client_operation_duration_seconds_count", "gen_ai_client_operation_duration_count"):
+            llm_calls += value
+        elif name in ("gen_ai_client_operation_duration_seconds_sum", "gen_ai_client_operation_duration_sum"):
+            duration_sum += value
+        elif name in ("gen_ai_server_time_to_first_token_seconds_sum", "gen_ai_server_time_to_first_token_sum"):
+            ttft_sum += value
+        elif name in ("gen_ai_server_time_to_first_token_seconds_count", "gen_ai_server_time_to_first_token_count"):
+            ttft_count += value
+
+    return {
+        "available": True,
+        "llm_calls": int(llm_calls),
+        "tokens": {
+            "input": int(tokens_input),
+            "output": int(tokens_output),
+            "total": int(tokens_input + tokens_output),
+        },
+        "avg_duration_ms": round(duration_sum / llm_calls * 1000, 1) if llm_calls else 0,
+        "ttft_avg_ms": round(ttft_sum / ttft_count * 1000, 1) if ttft_count else 0,
     }
 
 

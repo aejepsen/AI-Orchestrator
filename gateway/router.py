@@ -27,6 +27,8 @@ class RoutePlan(BaseModel):
     domains: list[Domain] = Field(default_factory=list)
     plan: str = ""
     clarification: str | None = None
+    # Camada que decidiu o roteamento: "semantic" | "llm" | "lexical".
+    layer: str = ""
 
     @model_validator(mode="after")
     def _dedupe_and_check(self) -> "RoutePlan":
@@ -482,6 +484,7 @@ def classify_intent(
     *,
     context_domain: str | None = None,
     enriched: bool = False,
+    trace=None,
 ) -> RoutePlan:
     """Classifica a pergunta em domínios.
 
@@ -522,7 +525,9 @@ def classify_intent(
     if semantic is not None:
         plan = semantic.route(question, context_domain=context_domain)
         if plan is not None:
-            return _apply_semiose_guards(_apply_routing_guards(question, plan))
+            plan = _apply_semiose_guards(_apply_routing_guards(question, plan))
+            plan.layer = "semantic"
+            return plan
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": f"Pergunta: {question}"},
@@ -541,12 +546,15 @@ def classify_intent(
             )
         raw = ""
         try:
-            response = llm.chat(messages, format="json")
+            response = llm.chat(messages, format="json", trace=trace)
             raw = response.content
-            plan = _apply_routing_guards(question, _parse_route(raw))
-            return _apply_semiose_guards(plan)
+            plan = _apply_semiose_guards(_apply_routing_guards(question, _parse_route(raw)))
+            plan.layer = "llm"
+            return plan
         except (json.JSONDecodeError, ValidationError, LLMError) as exc:
             last_error = str(exc)[:300]
             if attempt == 0:
                 messages.append({"role": "assistant", "content": raw or "(sem resposta)"})
-    return _apply_semiose_guards(lexical_route(question))
+    plan = _apply_semiose_guards(lexical_route(question))
+    plan.layer = "lexical"
+    return plan

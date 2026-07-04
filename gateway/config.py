@@ -130,6 +130,10 @@ class Settings:
     otel_exporter_endpoint: str = field(
         default_factory=lambda: os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
     )
+    # Endpoint Prometheus do Collector — fonte independente pro /metrics.
+    otel_prom_endpoint: str = field(
+        default_factory=lambda: os.environ.get("OTEL_PROM_ENDPOINT", "http://otel-collector:8889/metrics")
+    )
     # Phoenix — evaluation de LLM (Arize, Apache 2.0).
     # Desabilita com PHOENIX_ENABLED=0. Roda local na porta 6006.
     phoenix_enabled: bool = field(

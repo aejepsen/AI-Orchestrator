@@ -114,6 +114,7 @@ def run_domain_agent(
     llm: OllamaClient | None = None,
     settings: Settings | None = None,
     deadline_s: float | None = None,
+    lf_trace: Any = None,
 ) -> AgentResult:
     """Executa uma task no subagente do domínio até resposta final ou limite."""
     settings = settings or load_settings()
@@ -138,7 +139,7 @@ def run_domain_agent(
 
     for _ in range(max_iters):
         iters += 1
-        response = llm.chat(messages, tools=tools)
+        response = llm.chat(messages, tools=tools, trace=lf_trace)
         last_content = response.content or last_content
 
         if not response.has_tool_calls:
@@ -200,12 +201,15 @@ class DomainAgentRunner:
         """Acesso ao registry para registro de virtual tools (ex.: expand_context)."""
         return self._registry
 
-    def run(self, domain: str, task: str, *, max_iters: int | None = None) -> AgentResult:
+    def run(
+        self, domain: str, task: str, *, max_iters: int | None = None, lf_trace: Any = None
+    ) -> AgentResult:
         return run_domain_agent(
             domain,
             task,
             max_iters=max_iters or self.settings.agent_max_iters,
             registry=self._registry,
             llm=self._llm,
+            lf_trace=lf_trace,
             settings=self.settings,
         )

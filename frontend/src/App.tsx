@@ -121,6 +121,7 @@ export default function App() {
     let expectedAgents = 0;
     let finishedAgents = 0;
     let routed = false;
+    let clarified = false;
 
     // Sanitize é quase instantâneo; sem evento dedicado, avançamos para
     // "roteamento" após um curto delay, até o evento `route` chegar.
@@ -139,6 +140,7 @@ export default function App() {
               expectedAgents = event.data.domains.length;
               if (event.data.clarification) {
                 setStage("synthesize");
+                clarified = true;
                 append({ kind: "clarification", text: event.data.clarification });
               } else {
                 setStage("agents");
@@ -160,7 +162,8 @@ export default function App() {
               appendToken(event.data.t);
               break;
             case "final":
-              finalize(event.data.answer);
+              // Clarification já virou balão próprio — final repetiria o texto.
+              if (!clarified) finalize(event.data.answer);
               break;
             case "confirm":
               setStage("confirm");
@@ -212,6 +215,7 @@ export default function App() {
 
     let expectedAgents = 0;
     let finishedAgents = 0;
+    let clarified = false;
 
     try {
       await resumeChat(
@@ -224,6 +228,7 @@ export default function App() {
               expectedAgents = event.data.domains.length;
               if (event.data.clarification) {
                 setStage("synthesize");
+                clarified = true;
                 append({ kind: "clarification", text: event.data.clarification });
               } else {
                 setStage("agents");
@@ -245,7 +250,8 @@ export default function App() {
               appendToken(event.data.t);
               break;
             case "final":
-              finalize(event.data.answer);
+              // Clarification já virou balão próprio — final repetiria o texto.
+              if (!clarified) finalize(event.data.answer);
               break;
             case "confirm":
               setStage("confirm");

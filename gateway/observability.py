@@ -114,7 +114,8 @@ def _get_status(fw: FrameworkDef) -> FrameworkStatus:
     elif fw.id == "langsmith":
         key = os.environ.get("LANGSMITH_API_KEY", "")
         enabled = os.environ.get("LANGSMITH_ENABLED", "0") not in ("0", "false", "False")
-        if enabled and key.startswith("lsv"):
+        # Placeholder "lsv2_pt_..." também começa com "lsv" — exigir key completa.
+        if enabled and key.startswith("lsv") and "..." not in key and len(key) > 20:
             return FrameworkStatus(fw.id, True, "connected (cloud)")
         return FrameworkStatus(fw.id, False, "provisioned — configure LANGSMITH_API_KEY no .env")
     elif fw.id == "phoenix":
@@ -213,6 +214,22 @@ def _latest_semiose_data() -> dict[str, Any]:
         return {}
 
 
+def _latest_faithfulness_data() -> dict[str, Any]:
+    files = sorted(_EVALS_DIR.glob("faithfulness_*.json"), reverse=True)
+    if not files:
+        return {}
+    try:
+        return json.loads(files[0].read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _as_of(data: dict[str, Any]) -> str | None:
+    """Data (YYYY-MM-DD) do eval que originou o valor."""
+    ts = data.get("timestamp", "")
+    return ts[:10] if isinstance(ts, str) and len(ts) >= 10 else None
+
+
 def _routing_accuracy() -> float:
     data = _latest_routing_data()
     items = data.get("items", [])
@@ -236,20 +253,31 @@ def _injection_block_rate() -> float:
         return 1.0
 
 
-def _compute_base_metrics() -> dict[str, float]:
-    """Calcula todas as métricas base a partir dos eval files + LangSmith live."""
+# Custo GPU local: RTX 3060 ~170 W a R$ 0,75/kWh → R$/segundo de inferência.
+_GPU_COST_BRL_PER_S = 0.170 * 0.75 / 3600
+
+
+def _compute_base_metrics(live: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    """Calcula as métricas base. Cada entrada: {value, source, as_of}.
+
+    source:
+    - "live": derivada dos traces reais (Langfuse/OTel), atualiza com as interações;
+    - "eval": exige gabarito (golden) — vem do último eval, com data;
+    - "estimate": premissa fixa, sem medição possível ainda.
+    """
     routing = _latest_routing_data()
     semiose = _latest_semiose_data()
+    faith = _latest_faithfulness_data()
     sm = semiose.get("metrics", {})
 
-    # Tenta buscar métricas live do LangSmith (latência real, tokens reais, etc.)
-    # Se indisponível (sem API key, sem traces), usa estimativas.
-    ls_live: dict[str, Any] | None = None
-    try:
-        from gateway.langsmith_client import fetch_live_metrics
-        ls_live = fetch_live_metrics(project="ai-orchestrator", hours=24)
-    except Exception:
-        pass
+    lv = live or {}
+    total_traces = lv.get("total_traces", 0) or 0
+    lv_tokens = lv.get("tokens", {}) or {}
+    lv_latency = lv.get("latency", {}) or {}
+    has_live = total_traces > 0
+
+    def metric(value: Any, source: str, as_of: str | None = None) -> dict[str, Any]:
+        return {"value": value, "source": source, "as_of": as_of}
 
     # ── Negócio ──
     routing_acc = 0.0
@@ -257,48 +285,64 @@ def _compute_base_metrics() -> dict[str, float]:
     if items:
         routing_acc = sum(1 for i in items if i.get("ok")) / len(items)
 
-    # Cost-per-Task: live LangSmith > estimativa
-    if ls_live and ls_live.get("cost_per_task_brl"):
-        cost_per_task = ls_live["cost_per_task_brl"]
-    else:
-        cost_per_task = 0.0032  # fallback estimado
+    latency_avg_s = (lv_latency.get("avg_ms", 0) or 0) / 1000.0
+    latency_p95_s = (lv_latency.get("p95_ms", 0) or 0) / 1000.0
 
-    # Token usage: live > estimado
-    if ls_live and ls_live.get("total_tokens_avg"):
-        token_avg = ls_live["total_tokens_avg"]
+    if has_live and lv_tokens.get("total"):
+        token_avg = metric(round(lv_tokens["total"] / total_traces), "live")
     else:
-        token_avg = 450
+        token_avg = metric(450, "estimate")
 
-    raoi = 783.0  # RAOI é sempre estimado (sem dados reais de operação)
+    if has_live and latency_avg_s > 0:
+        cost_per_task = metric(round(latency_avg_s * _GPU_COST_BRL_PER_S, 6), "live")
+    else:
+        cost_per_task = metric(0.0032, "estimate")
 
     # ── Engenharia ──
-    if ls_live and ls_live.get("task_success_rate") is not None:
-        task_success = ls_live["task_success_rate"]
+    if has_live:
+        errors = lv.get("error_count", 0) or 0
+        task_success = metric(round((total_traces - errors) / total_traces, 4), "live")
     else:
-        task_success = 0.942
+        task_success = metric(0.942, "estimate")
 
-    tool_eff = 2.3
-    drift = sm.get("contextual_drift_score", 0.1075)
-
-    # Latência: live LangSmith > estimada
-    if ls_live:
-        latency_avg = ls_live.get("latency_avg_s", 2.1)
-        latency_p95 = ls_live.get("latency_p95_s", 4.8)
+    tools = lv.get("tools", {}) or {}
+    if tools.get("sample_size"):
+        tool_eff = metric(round(tools.get("avg_per_task", 0.0), 2), "live")
     else:
-        latency_avg = 2.1
-        latency_p95 = 4.8
+        tool_eff = metric(1.3, "eval", "2026-07-02")  # medido no eval de domains
+
+    drift = metric(sm.get("contextual_drift_score", 0.0), "eval", _as_of(semiose))
+
+    if has_live and latency_avg_s > 0:
+        latency_avg = metric(round(latency_avg_s, 2), "live")
+        latency_p95 = metric(round(latency_p95_s, 2), "live")
+    else:
+        latency_avg = metric(0.0, "estimate")
+        latency_p95 = metric(0.0, "estimate")
 
     # ── Governança ──
-    faithfulness = 0.91
-    jailbreak_block = _injection_block_rate()
-    routing_fail = sm.get("routing_failure_rate", 0.03)
+    faith_rate = (faith.get("metrics", {}) or {}).get("faithfulness_rate")
+    faithfulness = metric(
+        round(float(faith_rate), 4) if faith_rate is not None else 0.0, "eval", _as_of(faith)
+    )
+    jailbreak_block = metric(round(_injection_block_rate(), 4), "eval", _as_of_injection())
+
+    # Routing Failure LIVE: % de requests em que o roteador não achou domínio
+    # (disparou clarification). Antes vinha do eval de semiose — enganoso.
+    clar_count = lv.get("clarifications", 0) or 0
+    if has_live:
+        routing_fail = metric(round(clar_count / total_traces, 4), "live")
+        clarification = metric(round(clar_count / total_traces, 4), "live")
+    else:
+        routing_fail = metric(0.0, "estimate")
+        clarification = metric(0.0, "estimate")
 
     # ── Humano-IA ──
-    clarification = sm.get("clarification_rate", 0.05)
-    human_feedback = 0.12
+    human_feedback = metric(0.12, "estimate")  # sem mecanismo de feedback no front
+    raoi = metric(783.0, "estimate")
 
-    result = {
-        "routing_accuracy": round(routing_acc, 4),
+    return {
+        "routing_accuracy": metric(round(routing_acc, 4), "eval", _as_of(routing)),
         "cost_per_task": cost_per_task,
         "token_usage_avg": token_avg,
         "raoi_monthly": raoi,
@@ -308,18 +352,22 @@ def _compute_base_metrics() -> dict[str, float]:
         "latency_avg": latency_avg,
         "latency_p95": latency_p95,
         "faithfulness": faithfulness,
-        "injection_block_rate": round(jailbreak_block, 4),
-        "routing_failure_rate": round(routing_fail, 4),
-        "clarification_rate": round(clarification, 4),
+        "injection_block_rate": jailbreak_block,
+        "routing_failure_rate": routing_fail,
+        "clarification_rate": clarification,
         "human_feedback_ratio": human_feedback,
     }
 
-    # Adiciona flag indicando fonte dos dados live
-    if ls_live:
-        result["_langsmith_live"] = True  # type: ignore[assignment]
-        result["_langsmith_traces"] = ls_live.get("total_traces", 0)  # type: ignore[assignment]
 
-    return result
+def _as_of_injection() -> str | None:
+    files = sorted(_EVALS_DIR.glob("injection_*.json"), reverse=True)
+    if not files:
+        return None
+    try:
+        data = json.loads(files[0].read_text(encoding="utf-8"))
+        return _as_of(data)
+    except Exception:
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -327,13 +375,14 @@ def _compute_base_metrics() -> dict[str, float]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def collect_frameworks() -> dict[str, Any]:
+def collect_frameworks(live: dict[str, Any] | None = None) -> dict[str, Any]:
     """Retorna métricas agrupadas por framework para o frontend.
 
-    Cada framework exibe TODAS as métricas (duplicação intencional).
-    Métricas que um framework NÃO mede nativamente são marcadas com `native: false`.
+    Cada framework exibe SOMENTE as métricas que mede nativamente.
+    Cada métrica carrega source ("live" | "eval" | "estimate") e as_of.
+    `live` = agregado do MetricsCollector (traces Langfuse + OTel).
     """
-    base = _compute_base_metrics()
+    base = _compute_base_metrics(live)
 
     # Mapa: para cada framework, quais métricas são nativas
     native = {
@@ -341,7 +390,7 @@ def collect_frameworks() -> dict[str, Any]:
             "routing_accuracy", "cost_per_task", "token_usage_avg",
             "task_success_rate", "tool_call_efficiency",
             "latency_avg", "latency_p95",
-            "injection_block_rate", "routing_failure_rate",
+            "injection_block_rate", "routing_failure_rate", "clarification_rate",
         },
         "langsmith": {
             "routing_accuracy", "cost_per_task", "token_usage_avg",
@@ -368,18 +417,22 @@ def collect_frameworks() -> dict[str, Any]:
         status = _get_status(fw)
         fw_native = native.get(fw.id, set())
 
-        # Todas as métricas, marcando as nativas
+        # Somente métricas nativas do framework.
         pillar_metrics = {}
         for met in ALL_METRICS:
+            if met.key not in fw_native:
+                continue
             pillarkey = met.pillar
-            val = base.get(met.key, 0.0)
+            entry = base.get(met.key, {"value": 0.0, "source": "estimate", "as_of": None})
             m = {
                 "key": met.key,
                 "label": met.label,
-                "value": val,
+                "value": entry["value"],
+                "source": entry["source"],
+                "as_of": entry["as_of"],
                 "unit": met.unit,
                 "lower_is_better": met.lower_is_better,
-                "native": met.key in fw_native,
+                "native": True,
                 "description": met.description,
             }
             if pillarkey not in pillar_metrics:

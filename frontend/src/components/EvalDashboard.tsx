@@ -73,6 +73,8 @@ interface FrameworkMetric {
   unit: string;
   lower_is_better: boolean;
   native: boolean;
+  source?: "live" | "eval" | "estimate";
+  as_of?: string | null;
   description: string;
 }
 
@@ -732,6 +734,42 @@ const DEPLOYMENT_LABELS: Record<string, string> = {
   cloud: "Cloud (SaaS)",
 };
 
+function SourceBadge({ source, asOf }: { source?: string; asOf?: string | null }) {
+  if (source === "live") {
+    return (
+      <span
+        className="ml-1.5 inline-flex items-center gap-1 rounded px-1 py-px text-[8px] font-medium uppercase tracking-wider"
+        style={{ color: "#34d399", background: "rgba(52,211,153,0.1)" }}
+        title="Medida em tempo real dos traces (atualiza a cada interação)"
+      >
+        <span className="h-1 w-1 rounded-full bg-emerald-400 animate-pulse" />
+        live
+      </span>
+    );
+  }
+  if (source === "eval") {
+    const date = asOf ? asOf.slice(5).split("-").reverse().join("/") : "";
+    return (
+      <span
+        className="ml-1.5 rounded px-1 py-px text-[8px] font-medium uppercase tracking-wider text-slate-400"
+        style={{ background: "rgba(100,116,139,0.15)" }}
+        title="Exige gabarito (golden set) — valor do último eval executado"
+      >
+        eval{date ? ` ${date}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="ml-1.5 rounded px-1 py-px text-[8px] font-medium uppercase tracking-wider text-amber-400/80"
+      style={{ background: "rgba(251,191,36,0.08)" }}
+      title="Estimativa com premissas fixas — sem medição disponível ainda"
+    >
+      est.
+    </span>
+  );
+}
+
 function FrameworkMetricRow({ metric }: { metric: FrameworkMetric }) {
   const { text, color } = fmtMetric(metric.unit, metric.value, metric.lower_is_better, metric.native);
   return (
@@ -739,18 +777,9 @@ function FrameworkMetricRow({ metric }: { metric: FrameworkMetric }) {
       className="flex items-center justify-between rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-raised/20"
       title={metric.description}
     >
-      <div className="flex items-center gap-1.5 min-w-0">
-        {!metric.native && (
-          <span className="text-[9px] text-faint opacity-50" title="Métrica computada externamente">
-            ◇
-          </span>
-        )}
-        {metric.native && (
-          <span className="text-[9px] text-indigo-400" title="Métrica nativa do framework">
-            ◆
-          </span>
-        )}
+      <div className="flex items-center gap-1 min-w-0">
         <span className="truncate text-muted">{metric.label}</span>
+        <SourceBadge source={metric.source} asOf={metric.as_of} />
       </div>
       <span className="ml-2 shrink-0 font-mono font-semibold tabular-nums" style={{ color }}>
         {text}
@@ -872,9 +901,18 @@ export function EvalDashboard() {
 
   useEffect(() => {
     fetchData();
+    // Polling é o fallback; o push real-time vem do SSE /events abaixo.
     intervalRef.current = setInterval(fetchData, REFRESH_MS);
+
+    // Real-time: gateway emite `evals_updated` quando um eval novo é gravado
+    // em evals/results/. EventSource não envia headers — token via query.
+    const token = localStorage.getItem(TOKEN_KEY);
+    const es = new EventSource(`/events?token=${encodeURIComponent(token ?? "")}`);
+    es.addEventListener("evals_updated", () => fetchData());
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      es.close();
     };
   }, [fetchData]);
 

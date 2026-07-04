@@ -1,7 +1,9 @@
-"""Agregador de resultados de avaliacao (routing + injection) com cache 60s.
+"""Agregador de resultados de avaliacao (routing + injection).
 
 Le JSONs de evals/results/, agrega metricas por tipo e data, retorna
-ultimos N runs ordenados por timestamp do filename.
+ultimos N runs ordenados por timestamp do filename. Cache invalidado
+por mtime do diretorio: eval novo aparece no proximo request (real-time
+via SSE /events + refetch do front), sem esperar TTL.
 """
 
 from __future__ import annotations
@@ -17,37 +19,63 @@ from gateway.observability import collect_frameworks
 
 logger = logging.getLogger("gateway")
 
-_CACHE_TTL_S = 60.0
+_CACHE_TTL_S = 15.0
 _EVALS_DIR = Path(__file__).resolve().parent.parent / "evals" / "results"
 _MAX_RUNS = 20
 
 
 class _Cache:
-    __slots__ = ("data", "fetched_at")
+    __slots__ = ("data", "fetched_at", "dir_mtime")
 
     def __init__(self) -> None:
         self.data: dict[str, Any] = {}
         self.fetched_at: float = 0.0
+        self.dir_mtime: float = 0.0
 
     @property
     def expired(self) -> bool:
         return time.monotonic() - self.fetched_at > _CACHE_TTL_S
 
 
-class EvalResultsCollector:
-    """Coleta e agrega resultados de evals com cache em memoria."""
+def latest_results_mtime() -> float:
+    """Maior mtime dos JSONs de evals/results/ (0.0 se diretorio vazio)."""
+    try:
+        return max((p.stat().st_mtime for p in _EVALS_DIR.glob("*.json")), default=0.0)
+    except OSError:
+        return 0.0
 
-    def __init__(self) -> None:
+
+class EvalResultsCollector:
+    """Coleta e agrega resultados de evals com cache em memoria.
+
+    `metrics_collector` (opcional): MetricsCollector do gateway — alimenta
+    as metricas live dos frameworks (tokens, latencia, clarification etc.).
+    """
+
+    def __init__(self, metrics_collector: Any = None) -> None:
         self._cache = _Cache()
+        self._metrics = metrics_collector
+
+    def _live_metrics(self) -> dict[str, Any] | None:
+        """Agregado live do MetricsCollector (cache 10s proprio; barato)."""
+        if self._metrics is None:
+            return None
+        try:
+            return self._metrics.collect()
+        except Exception as exc:
+            logger.warning("EvalResultsCollector: live metrics indisponiveis: %s", exc)
+            return None
 
     def collect(self) -> dict[str, Any]:
-        if not self._cache.expired and self._cache.data:
+        current_mtime = latest_results_mtime()
+        if not self._cache.expired and self._cache.data and current_mtime <= self._cache.dir_mtime:
             return self._cache.data
 
         try:
             result = self._aggregate()
             self._cache.data = result
             self._cache.fetched_at = time.monotonic()
+            self._cache.dir_mtime = current_mtime
             return result
         except Exception as exc:
             logger.warning("EvalResultsCollector: falha: %s", exc)
@@ -92,7 +120,7 @@ class EvalResultsCollector:
             "semiose": semiose_summary,
             "models": models,
             "total_runs": len(routing_runs) + len(injection_runs),
-            "frameworks": collect_frameworks(),
+            "frameworks": collect_frameworks(live=self._live_metrics()),
         }
 
 

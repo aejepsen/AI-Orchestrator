@@ -13,6 +13,7 @@ interface TokenMetrics {
   input: number;
   output: number;
   total: number;
+  generations?: number;
 }
 
 interface RoutingMetrics {
@@ -21,19 +22,42 @@ interface RoutingMetrics {
   unclassified: number;
 }
 
+interface TtftMetrics {
+  avg_ms: number;
+  p95_ms: number;
+  sample_size: number;
+}
+
+interface OodMetrics {
+  avg_residual: number;
+  max_residual: number;
+  sample_size: number;
+}
+
+interface OtelMetrics {
+  available: boolean;
+  llm_calls?: number;
+  tokens?: { input: number; output: number; total: number };
+  avg_duration_ms?: number;
+  ttft_avg_ms?: number;
+}
+
 interface Metrics {
   available: boolean;
   stale: boolean;
   total_traces: number;
   latency: LatencyMetrics;
   tokens: TokenMetrics;
+  ttft?: TtftMetrics;
+  ood?: OodMetrics;
+  otel?: OtelMetrics;
   routing: RoutingMetrics;
   injection_blocks: number;
   error_count: number;
 }
 
 const TOKEN_KEY = "aio:access-token";
-const REFRESH_INTERVAL_MS = 30_000;
+const REFRESH_INTERVAL_MS = 10_000;
 
 /* ───────── Helpers ───────── */
 
@@ -235,7 +259,7 @@ export function Dashboard() {
       <div className="mb-8 flex items-baseline justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-ink">Observabilidade</h2>
-          <p className="mt-1 text-xs text-muted">Metricas agregadas via Langfuse</p>
+          <p className="mt-1 text-xs text-muted">Metricas via Langfuse + OpenTelemetry (gen_ai.*)</p>
         </div>
         <div className="flex items-center gap-3">
           {metrics && !metrics.available && (
@@ -326,6 +350,50 @@ export function Dashboard() {
             sub="Status do Langfuse"
             accent={metrics.available ? "rgba(52, 211, 153, 0.1)" : "rgba(248, 113, 113, 0.1)"}
           />
+          <StatCard
+            label="TTFT (Streaming)"
+            value={metrics.ttft && metrics.ttft.sample_size > 0 ? fmtMs(metrics.ttft.avg_ms) : "—"}
+            sub={
+              metrics.ttft && metrics.ttft.sample_size > 0
+                ? `P95: ${fmtMs(metrics.ttft.p95_ms)} · ${metrics.ttft.sample_size} amostras`
+                : "Tempo ate o primeiro token"
+            }
+            accent="rgba(96, 165, 250, 0.1)"
+          />
+          <StatCard
+            label="OOD Residual"
+            value={
+              metrics.ood && metrics.ood.sample_size > 0
+                ? metrics.ood.avg_residual.toFixed(3)
+                : "—"
+            }
+            sub={
+              metrics.ood && metrics.ood.sample_size > 0
+                ? `Max: ${metrics.ood.max_residual.toFixed(3)} · guard log-only`
+                : "Subspace guard (log-only)"
+            }
+            accent="rgba(251, 191, 36, 0.1)"
+          />
+          <StatCard
+            label="OTel · Chamadas LLM"
+            value={metrics.otel?.available ? fmt(metrics.otel.llm_calls ?? 0) : "—"}
+            sub={
+              metrics.otel?.available
+                ? `Duracao media: ${fmtMs(metrics.otel.avg_duration_ms ?? 0)}`
+                : "Collector offline"
+            }
+            accent="rgba(96, 165, 250, 0.1)"
+          />
+          <StatCard
+            label="OTel · Tokens (gen_ai)"
+            value={metrics.otel?.available ? fmt(metrics.otel.tokens?.total ?? 0) : "—"}
+            sub={
+              metrics.otel?.available
+                ? `In: ${fmt(metrics.otel.tokens?.input ?? 0)} · Out: ${fmt(metrics.otel.tokens?.output ?? 0)} — fonte independente`
+                : "gen_ai.client.token.usage"
+            }
+            accent="rgba(129, 140, 248, 0.1)"
+          />
 
           {/* Full-width sections */}
           <RoutingBar routing={metrics.routing} />
@@ -335,7 +403,7 @@ export function Dashboard() {
 
       {/* Auto-refresh indicator */}
       <p className="mt-8 text-center text-[11px] text-faint">
-        Atualiza automaticamente a cada 30s
+        Atualiza automaticamente a cada 10s
       </p>
     </div>
   );

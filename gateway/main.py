@@ -37,9 +37,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from gateway import otel
 from gateway.agents import DomainAgentRunner
 from gateway.config import Settings, load_settings
-from gateway.eval_results import EvalResultsCollector
+from gateway.eval_results import EvalResultsCollector, latest_results_mtime
 from gateway.graph import GatewayGraph
 from gateway.metrics import MetricsCollector
 from gateway.security import AccessTokenGuard, RateLimiter, client_ip
@@ -80,6 +81,8 @@ def create_app(
 
     # Pool dedicado para execução síncrona do grafo (não compete com asyncio default pool).
     _settings_boot = load_settings()
+    # OTel GenAI: uma vez por processo; no-op se OTEL_ENABLED=0 ou Collector fora.
+    otel.init(_settings_boot)
     _graph_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=_settings_boot.max_graph_workers,
         thread_name_prefix="graph",
@@ -93,7 +96,7 @@ def create_app(
         return app.state.graph
 
     _metrics_collector = MetricsCollector(_settings_boot)
-    _eval_collector = EvalResultsCollector()
+    _eval_collector = EvalResultsCollector(metrics_collector=_metrics_collector)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -120,6 +123,39 @@ def create_app(
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, _eval_collector.collect)
         return JSONResponse(content=data)
+
+    @app.get("/events", response_model=None)
+    async def events(http_request: Request) -> StreamingResponse | JSONResponse:
+        # EventSource não envia headers custom: aceita token via query param.
+        token = http_request.query_params.get("token") or http_request.headers.get("x-access-token")
+        if not guard.allows(token):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "detail": "Token de acesso ausente ou inválido."},
+            )
+
+        async def event_stream():
+            last_mtime = latest_results_mtime()
+            last_beat = time.monotonic()
+            yield _sse("connected", {"evals_mtime": last_mtime})
+            while True:
+                await asyncio.sleep(3.0)
+                current = latest_results_mtime()
+                if current > last_mtime:
+                    last_mtime = current
+                    yield _sse("evals_updated", {"evals_mtime": current})
+                    last_beat = time.monotonic()
+                elif time.monotonic() - last_beat > 15.0:
+                    # Cloudflare corta conexão silenciosa; comentário SSE segura.
+                    yield ": keepalive\n\n"
+                    last_beat = time.monotonic()
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            # Sem no-cache o Cloudflare bufferiza GET SSE e nenhum evento chega.
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/chat", response_model=None)
     async def chat(body: ChatRequest, http_request: Request) -> StreamingResponse | JSONResponse:
@@ -175,6 +211,10 @@ def create_app(
                             if "final_answer" in payload:
                                 emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
                         elif node in ("synthesize", "respond_clarification"):
+                            if node == "respond_clarification":
+                                # Front distingue: modelo pedindo esclarecimento,
+                                # não resposta definitiva.
+                                emit("clarification", {"answer": payload["final_answer"]})
                             emit("final", {"answer": payload["final_answer"], "trace_id": trace_id})
             except Exception as exc:  # noqa: BLE001 — erro vira evento SSE, não 500 mudo
                 logger.exception("Erro no grafo: %s", exc)

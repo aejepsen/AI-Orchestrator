@@ -100,7 +100,7 @@ def test_chat_sse_clarification():
     _, _, events = _post_chat(FakeGraph(clarification=True), "me ajuda aí")
 
     names = [name for name, _ in events]
-    assert names == ["route", "final"]
+    assert names == ["route", "clarification", "final"]
     assert events[0][1]["clarification"] == "Qual área?"
     assert events[1][1]["answer"] == "Qual área?"
 

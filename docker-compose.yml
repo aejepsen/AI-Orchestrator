@@ -10,6 +10,13 @@ services:
     environment:
       # MoE 30B-A3B Q4 precisa ~17.8 GiB total: ~10 GiB GPU + ~8 GiB RAM/swap.
       - OLLAMA_KEEP_ALIVE=5m
+      # Fan-out multi-domínio: 3 agentes decodificam em batch no mesmo modelo.
+      # Pesos compartilhados (5.4 GB), só KV cache multiplica (~8.5 GB total,
+      # cabe na 3060 12 GB). Medido: makespan 3 domínios cai ~22s → ver README.
+      - OLLAMA_NUM_PARALLEL=3
+      # Prefill é o gargalo real (prompts de agente 2-3k tokens); flash
+      # attention acelera prefill e encolhe KV cache.
+      - OLLAMA_FLASH_ATTENTION=1
     deploy:
       resources:
         limits:
@@ -300,8 +307,12 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: ai-orchestrator-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "127.0.0.1:4318:4318"  # OTLP HTTP
+      - "127.0.0.1:8889:8889"  # Prometheus exporter (métricas gen_ai.*)
     profiles:
       - observability
     restart: unless-stopped

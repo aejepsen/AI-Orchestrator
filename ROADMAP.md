@@ -1,6 +1,6 @@
-# ROADMAP — AI-Orchestrator (2026-07-02)
+# ROADMAP — AI-Orchestrator (2026-07-04)
 
-**Estado atual:** Fases 0–8 concluídas (PoC + LoRA 9B + Fase 6 obs/HITL + Fase 7 BERT/security + Fase 8 Semiose A/B/C). Produção live em https://suasalada.com.br (`MODEL=qwen3.5-9b-orch`). Auditoria 2026-06-14: 0 CRITICO/ALTO/MEDIO. Git main sincronizado; 1 arquivo untracked (notas de safeguards, ver §5).
+**Estado atual:** Fases 0–8 concluídas (PoC + LoRA 9B + Fase 6 obs/HITL + Fase 7 BERT/security + Fase 8 Semiose A/B/C) + rodada 2026-07-04 de observabilidade (OTel GenAI semconv + Collector fan-out Phoenix/Prometheus, evals com fontes live/eval/estimate, tuning Ollama −16% makespan). Produção live em https://suasalada.com.br (`MODEL=qwen3.5-9b-orch`). Auditoria 2026-06-14: 0 CRITICO/ALTO/MEDIO. Git main sincronizado; 1 arquivo untracked (notas de safeguards, ver §5).
 
 > **Regra de produção:** app deve permanecer ONLINE (links com entrevistadores). Deploy/restart só com aviso prévio ao usuário.
 
@@ -35,12 +35,15 @@ Ordem do próprio plano: **S2 primeiro** (potencializa S1 já implementado); S5/
 
 | Métrica | Status | Ação |
 |---------|--------|------|
-| Task Success Rate | ✅ plano | `task_success` no `eval_semiose.py` (`stop_reason != "answer"` → fail) |
-| Tool Call Efficiency | ✅ plano | `tools_per_task` (média + P95) no `eval_semiose.py` |
-| Faithfulness (RAG Triad) | 🟡 próximo passo | Phoenix `FaithfulnessEvaluator` adaptado a LLM local (judge via Ollama) |
-| Correction Frequency | 🟡 | Endpoint `/feedback` → LangSmith AnnotationQueue (documentável) |
-| Human Takeover Rate | 🔴 doc-only | `clarification_rate` derivada do RoutePlan |
+| Task Success Rate | ✅ 2026-07-02 | `task_success` medido no eval_domains (100%); fonte `eval` no dashboard |
+| Tool Call Efficiency | ✅ 2026-07-02 | `tools_per_task` 1.3 média / 2 P95; fonte `eval` no dashboard |
+| Faithfulness (RAG Triad) | ✅ 2026-07-02/04 | Juiz LLM local (desvio documentado do Phoenix evaluator): 39/40 = 97.5%; dashboard lê o eval real em vez de valor fixo |
+| Correction Frequency | 🟡 | Endpoint `/feedback` → LangSmith AnnotationQueue (documentável; status não aceita mais key placeholder) |
+| Human Takeover Rate | ✅ 2026-07-04 | Clarification Rate agora **live** (clarifications/traces), não mais do eval de semiose; evento SSE `clarification` distinto no /chat |
+| Routing Failure Rate | ✅ 2026-07-04 | Agora **live** a partir dos traces |
 | RAOI | 🟡 doc-only | Fórmula no README/dashboard (precisa de dados reais de operação) |
+
+✅ **2026-07-04 — camada OTel GenAI completa** (`gateway/otel.py` + `otel-collector-config.yaml`): spans `gen_ai.*` + histogramas token.usage/operation.duration/TTFT via OTLP; Collector fan-out traces→Phoenix, métricas→Prometheus :8889 (fonte independente do Langfuse no `/metrics`). Causa-raiz do `tokens=0` corrigida: usage lido na fonte (Ollama `prompt_eval_count`/`eval_count`) + trace propagado em classify/agentes. Bônus perf: `OLLAMA_NUM_PARALLEL=3` + `OLLAMA_FLASH_ATTENTION=1` → fan-out 3 domínios 23.3s→19.5s (−16%), VRAM 6.3/12 GB.
 
 ### 4b. Derivados do parecer CliffordNet (`plano_cliffordNet_parecer.md`)
 

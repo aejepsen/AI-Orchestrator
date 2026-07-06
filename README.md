@@ -129,15 +129,20 @@ Observabilidade
 
 `trace_id` por request propagado pelo grafo; log JSON estruturado por no (no, latencia, dominios). Eventos SSE em tempo real: `route` -> `agent` (um por subagente concluido) -> `final`.
 
-**Langfuse tracing** (Cloud): trace por request, span por no do grafo, generation por chamada LLM. Gateway conecta ao **Langfuse Cloud** (`LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}`) por padrao. Containers Langfuse v2 self-hosted + Postgres permanecem no `docker-compose.yml` como fallback (basta alterar `LANGFUSE_HOST`). Degradacao graceful — Langfuse fora nao bloqueia requests.
+**Langfuse tracing** (Cloud): trace por request, span por no do grafo, generation por chamada LLM. Gateway conecta ao **Langfuse Cloud** (`LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}`) por padrao. Containers Langfuse v2 self-hosted + Postgres permanecem no `docker-compose.yml` como fallback (basta alterar `LANGFUSE_HOST`). Degradacao graceful — Langfuse fora nao bloqueia requests. Tokens lidos **na fonte** (usage real do Ollama: `prompt_eval_count`/`eval_count`) e trace propagado por todo o grafo — classify e agentes incluidos (causa-raiz do antigo `tokens=0`). Metadata por trace: `routing_layer` (semantic/llm/lexical), `injection_blocked`, `ood_residual`, `ttft_ms`, `tools_used`.
+
+**OTel GenAI semconv** (`gateway/otel.py`, opt-in `OTEL_ENABLED=1`): instrumentacao manual seguindo as GenAI Semantic Conventions — span `gen_ai.*` por chamada LLM + histogramas `gen_ai.client.token.usage`, `gen_ai.client.operation.duration` e `gen_ai.server.time_to_first_token` via OTLP HTTP. O **Collector** (`otel-collector-config.yaml`, profile `observability`) faz fan-out: traces → **Phoenix**, metricas → exporter **Prometheus** (`:8889`), raspado pelo gateway em `/metrics` como fonte independente do Langfuse. Mesma degradacao graceful: SDK ausente ou Collector fora → no-op.
 
 **Endpoints de metricas e evals (auth-guarded):**
-- `GET /metrics` — metricas agregadas do Langfuse (traces, latencias, tokens, custo). Cache de 30 s. Servido por `gateway/metrics.py`.
-- `GET /eval-results` — resultados agregados de routing accuracy + injection F1 a partir de `evals/results/*.json`. Cache de 60 s. Servido por `gateway/eval_results.py`. Volume `./evals/results:/app/evals/results:ro` montado read-only no container gateway.
+- `GET /metrics` — metricas agregadas do Langfuse (tokens via observations — usage vive na generation, nao no trace) + scrape do Prometheus do Collector como fonte independente. Cache de 10 s. Servido por `gateway/metrics.py`.
+- `GET /eval-results` — resultados agregados de routing accuracy + injection F1 a partir de `evals/results/*.json`. Cache de 60 s. Servido por `gateway/eval_results.py`. Volume `./evals/results:/app/evals/results:ro` montado read-only no container gateway. Cada metrica declara a **fonte**: `live` (traces reais), `eval` (golden set, com data) ou `estimate` — e cada framework exibe apenas metricas que mede nativamente (faithfulness le o eval real, 97.5%, em vez de valor fixo).
+- `GET /events` — SSE de push para o front (watcher de mtime dos evals; `Cache-Control: no-cache` obrigatorio atras do Cloudflare).
 
 **Estado conversacional**: `MemorySaver` checkpointer com `thread_id` por sessao. Frontend persiste thread em localStorage; botao "Nova conversa" reseta contexto.
 
 **HITL (Human-in-the-Loop)**: no `confirm_dispatch` com `interrupt()` do LangGraph + endpoint `POST /chat/{thread_id}/resume`. Ativação seletiva por **write intent determinístico** (`gateway/write_intent.py`: léxico PT das write ops dos serviços; leitura nunca pausa, frases nominais como "contas a pagar" excluídas). Opt-in via `HITL_ENABLED=1`.
+
+**Tuning de inferência (medido 2026-07-04, RTX 3060 12 GB)**: `OLLAMA_NUM_PARALLEL=3` (fan-out de 3 agentes decodifica em batch no mesmo modelo — pesos compartilhados 5.4 GB, só o KV cache multiplica, ~8.5 GB total) + `OLLAMA_FLASH_ATTENTION=1` (acelera prefill dos prompts de agente de 2–3k tokens e encolhe KV cache). Makespan de 3 domínios: **23.3 s → 19.5 s (−16%)**, VRAM 6.3/12 GB. Gargalo restante: prefill + síntese sequencial.
 
 Como rodar
 
@@ -157,8 +162,8 @@ Interface web
 3 páginas (Vite + React + Tailwind v4) servidas pelo próprio gateway:
 
 - **Chat** — trace multi-agente ao vivo: chips de roteamento por domínio, card por subagente concluído (fan-out visível), síntese final, cronômetro honesto para a latência do modelo local.
-- **Dashboard** — métricas Langfuse (traces, latências, tokens, custo) via `GET /metrics` com cache 30 s.
-- **Evals** — routing accuracy + injection F1 via `GET /eval-results`, agregados de `evals/results/*.json` com cache 60 s.
+- **Dashboard** — métricas via `GET /metrics` (refresh 10 s): traces, latências, tokens, custo + TTFT, OOD residual e métricas OTel do Collector.
+- **Evals** — routing accuracy + injection F1 via `GET /eval-results`, com badge de fonte (`live`/`eval`/`estimate`) por métrica e refetch por push via SSE `GET /events`; balão de clarification distinto no chat.
 
 Navegação: **Chat | Dashboard | Evals | Nova conversa/← Início | Apresentação**.
 
